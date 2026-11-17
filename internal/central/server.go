@@ -18,10 +18,11 @@ import (
 )
 
 type Server struct {
-	store    *Store
-	material *Material
-	logger   *slog.Logger
-	now      func() time.Time
+	store         *Store
+	material      *Material
+	logger        *slog.Logger
+	now           func() time.Time
+	enrollmentURL string
 }
 type authenticatedAgent struct{ ID, EnrollmentID string }
 

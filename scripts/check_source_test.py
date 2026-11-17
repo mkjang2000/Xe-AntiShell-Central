@@ -154,6 +154,7 @@ class SourceCheckTests(unittest.TestCase):
             "slack-token": "xo" + "xb-" + "A" * 32,
             "jwt-token": "ey" + "J" + "a" * 20 + "." + "b" * 20 + "." + "c" * 20,
             "bearer-token": "Bear" + "er " + "a" * 32,
+            "installation-code": "xeas" + "1." + "A" * 96,
         }
         for number, value in enumerate(fixtures.values(), 1):
             self.write(f"samples/sample{number}.txt", "safe line\n" + value + "\n")

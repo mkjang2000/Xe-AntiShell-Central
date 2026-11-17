@@ -38,6 +38,8 @@ policy-key
 *enrollment-token*
 *initial-password*
 *offline-recovery*
+*.xeas
+*installation-code*
 *admin.headers
 *.rpmnew
 *.rpmsave

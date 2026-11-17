@@ -34,7 +34,7 @@ PRIVATE_NAMES = frozenset({
 })
 PRIVATE_GLOBS = (
     "*enrollment-token*", "*initial-password*", "*offline-recovery*",
-    "*admin.headers", "*.rpmnew", "*.rpmsave",
+    "*admin.headers", "*.rpmnew", "*.rpmsave", "*.xeas", "*installation-code*",
 )
 PRIVATE_SUFFIXES = (
     ".db", ".db-shm", ".db-wal", ".sqlite", ".sqlite3", ".sqlite-shm",
@@ -51,6 +51,7 @@ CONTENT_RULES = (
     ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b")),
     ("jwt-token", re.compile(r"\beyJ[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{8,}\b")),
     ("bearer-token", re.compile(r"\bBearer[ \t]+[A-Za-z0-9._~+/-]{20,}", re.IGNORECASE)),
+    ("installation-code", re.compile(r"\bxeas1\.[A-Za-z0-9_-]{64,}\b")),
     ("docker-host-inventory", re.compile(r"\bdocker-[0-9a-f]{64}\.scope\b", re.IGNORECASE)),
 )
 

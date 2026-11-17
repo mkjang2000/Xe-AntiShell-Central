@@ -20,8 +20,8 @@ from this central module's dependency graph. Including their notices does not
 add those modules as dependencies or assert that they are linked here.
 
 The central module pins the MIT-licensed
-`github.com/mkjang2000/Xe-AntiShell/protocol v0.1.0` shared contract module from
-[Xe-AntiShell](https://github.com/mkjang2000/Xe-AntiShell/tree/protocol/v0.1.0/protocol).
+`github.com/mkjang2000/Xe-AntiShell/protocol v0.1.1` shared contract module from
+[Xe-AntiShell](https://github.com/mkjang2000/Xe-AntiShell/tree/protocol/v0.1.1/protocol).
 Its project copyright and permission notice is retained in this distribution's
 identical [MIT license](LICENSE). The remaining selected packages may be reduced
 by compiler dead-code elimination.

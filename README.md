@@ -16,7 +16,7 @@ Linux, Go 1.22 이상, GNU make, Bash, Git, Python 3.9 이상이 필요하다.
 브라우저 스크립트 검증에는 Node.js 22 이상이 필요하며 서비스 실행에는 필요하지 않다.
 검증용 race 테스트에는 C 컴파일러도 필요하다. Go 모듈은 고정 버전으로
 다운로드하며, SQLite는 `modernc.org/sqlite`의 pure Go 드라이버를 사용한다.
-공용 계약은 `github.com/mkjang2000/Xe-AntiShell/protocol v0.1.0`에 고정한다.
+공용 계약은 `github.com/mkjang2000/Xe-AntiShell/protocol v0.1.1`에 고정한다.
 
 ```sh
 make verify
@@ -36,7 +36,7 @@ RPM 빌드에는 `rpm`, `rpmbuild`, systemd RPM 매크로와 GNU tar가 추가�
 
 ```sh
 make rpm
-sudo ./install.sh --rpm dist/rpm/xe-antishell-central-0.1.0-3.el9.x86_64.rpm
+sudo ./install.sh --rpm dist/rpm/xe-antishell-central-0.1.0-4.el9.x86_64.rpm
 # 또는 현재 소스를 빌드한 뒤 설치한다.
 sudo ./install.sh --build
 ```
@@ -138,6 +138,21 @@ Secure 쿠키를 사용하고, localhost 포트포워딩은 기존 HTTP 접속�
 정확한 명령은 아래 운영 문서를 따른다. 삭제 금지 정책이면 일반 승인을
 발급하지 않는다. 등록 토큰과 승인 파일은 발급 직후 한 번만 제공되며
 목록에서 다시 조회할 수 없다. 현재 웹 관리자 계정은 모든 중앙 관리 권한을 가진다.
+
+### 대화형 설치용 토큰
+
+에이전트 설치 마법사에서 사용할 완전한 설치 토큰을 발급하려면 중앙 실행
+옵션에 `--enrollment-url https://central.example.com:9443`을 설정한다. 이 주소는
+웹패널 주소가 아니라 에이전트 HTTPS API이며, 현재 서버 인증서가 해당 이름을
+포함해야 한다. 기존 CA·정책 키·DB를 지우거나 다시 초기화하지 않는다.
+
+패널에서 발급한 설치 토큰에는 단일 대상 등록 비밀값과 중앙 URL, 에이전트 ID,
+유효 시간, 공개 CA가 포함된다. 새 에이전트에서 `sudo ./install.sh`를 실행하고
+그 토큰을 붙여 넣으면 인증서·복구 파일 경로를 직접 입력할 필요가 없다.
+설치 토큰은 자격 증명이므로 명령 인자·로그·저장소에 넣지 않는다. 에이전트는
+토큰으로 전달받은 CA로 TLS와 호스트 이름을 검증한 뒤 등록 비밀값을 전송한다.
+개인 키와 오프라인 복구코드는 에이전트에서 생성하며 중앙에 원문을 보관하지 않는다.
+기존 원문 토큰과 CA 파일을 전달하는 비대화형 등록 방식도 유지한다.
 
 ```sh
 sudo sentinel-central enrollment-token \

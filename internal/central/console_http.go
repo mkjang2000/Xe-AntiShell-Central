@@ -1,8 +1,6 @@
 package central
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +9,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 )
@@ -182,7 +179,7 @@ ON a.agent_id=s.agent_id AND a.enrollment_id=s.enrollment_id AND a.desired_polic
 	}
 	now := s.now().UTC()
 	_ = tx.Rollback()
-	respond(w, http.StatusOK, map[string]any{"server_time": now, "agents": consoleAgents, "total_agents": totalAgents, "agents_truncated": totalAgents > len(consoleAgents), "groups": groups, "templates": templates, "defaults": defaultConsoleSettings(now)})
+	respond(w, http.StatusOK, map[string]any{"server_time": now, "agents": consoleAgents, "total_agents": totalAgents, "agents_truncated": totalAgents > len(consoleAgents), "groups": groups, "templates": templates, "defaults": defaultConsoleSettings(now), "enrollment": map[string]any{"central_url": s.enrollmentURL, "ready": s.enrollmentURL != ""}})
 }
 
 func (s *Server) consoleSaveGroup(w http.ResponseWriter, r *http.Request) {
@@ -231,49 +228,6 @@ func (s *Server) consoleDelete(w http.ResponseWriter, r *http.Request, group boo
 		return
 	}
 	respond(w, http.StatusOK, map[string]string{"result": "deleted"})
-}
-
-func (s *Server) consoleEnrollment(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		AgentID    string `json:"agent_id"`
-		TTLSeconds int64  `json:"ttl_seconds"`
-	}
-	if !consoleDecode(w, r, 1024, &request) {
-		return
-	}
-	if request.TTLSeconds == 0 {
-		request.TTLSeconds = 3600
-	}
-	if !identifierPattern.MatchString(request.AgentID) || request.TTLSeconds < 1 || request.TTLSeconds > 86400 {
-		s.consoleError(w, "enrollment input", fmt.Errorf("%w: 에이전트 ID와 유효 시간(1~86400초)을 확인하세요", ErrInvalid))
-		return
-	}
-	token, err := randomToken()
-	if err != nil {
-		s.consoleError(w, "enrollment credential", err)
-		return
-	}
-	now := s.now().UTC()
-	expires := now.Add(time.Duration(request.TTLSeconds) * time.Second)
-	digest := sha256.Sum256([]byte(token))
-	tx, err := s.store.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		s.consoleError(w, "enrollment transaction", err)
-		return
-	}
-	defer tx.Rollback()
-	if _, err = tx.ExecContext(r.Context(), "INSERT INTO enrollment_tokens(token_hash,agent_id,expires_at_ns) VALUES(?,?,?)", hex.EncodeToString(digest[:]), request.AgentID, expires.UnixNano()); err == nil {
-		err = appendAudit(r.Context(), tx, request.AgentID, "console.enrollment.issued", map[string]any{"expires_at": expires}, now)
-	}
-	if err == nil {
-		err = tx.Commit()
-	}
-	if err != nil {
-		_ = tx.Rollback()
-		s.consoleError(w, "enrollment issuance", err)
-		return
-	}
-	respond(w, http.StatusCreated, map[string]any{"agent_id": request.AgentID, "token": token, "expires_at": expires})
 }
 
 func (s *Server) consoleRevoke(w http.ResponseWriter, r *http.Request) {

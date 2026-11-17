@@ -18,6 +18,7 @@
 Xe-AntiShell-Central/
 ├── cmd/sentinel-central/          # Thin init/token/server CLI
 ├── internal/central/              # PKI, SQLite, agent and operator HTTP APIs
+│   └── enrollment_code.go        # Certificate-bound endpoint config and installation-code issuance
 ├── internal/console/              # Administrator auth, sessions, CSRF and HTTP wrapper
 │   └── assets/                    # Embedded Korean console, feature modules and JS tests
 ├── packaging/
@@ -51,12 +52,16 @@ Agent enrollment token + CSR → scoped certificate and enrollment generation
 Agent mTLS batch → authenticated transaction → durable ACK
 Loopback operator API → signed policy / removal grant / revocation
 Console session + CSRF → group/template editor → preview → atomic signed deployment
+Authenticated console → installation code with public CA → agent wizard → verified TLS enrollment
 ```
 
 ## Architecture Notes
 
 - The shared `github.com/mkjang2000/Xe-AntiShell/protocol` module owns wire and
   cryptographic contracts; central does not import agent implementation.
+- Protocol v0.1.1 adds bounded installation-code envelopes without changing
+  managed-v1 wire schemas or signed policy bytes. Offline recovery plaintext and
+  client private keys are generated and retained only on the agent side.
 - Central owns one binary, service and dedicated account. Its RPM scriptlets
   never call the agent CLI or apply the agent removal approval policy.
 - `/var/lib/xe-antishell-central` and existing unit overrides remain stable.

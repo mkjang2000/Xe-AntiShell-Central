@@ -120,12 +120,24 @@ class FakeNode {
   contains(node){return this===node||this.querySelectorAll("*").includes(node);}
   focus(){this.document.activeElement=this;}
   addEventListener(name,callback){this.handlers[name]=callback;}
+  select(){this.document.selected=this;}
+  click(){this.document.clicked=this;}
+  remove(){const parent=this.document.body;parent.children=parent.children.filter(node=>node!==this);}
   setAttribute(){}
   removeAttribute(){}
   scrollIntoView(){}
   showModal(){this.open=true;}
   close(){this.open=false;}
   replaceWith(node){this.document.nodes[this.id]=node;}
+}
+function appHarness(extra={}) {
+  const document={nodes:{},activeElement:null,title:"",createElement(tag){return new FakeNode(tag,this);},createDocumentFragment(){return new FakeNode("fragment",this);}};
+  document.body=Object.assign(new FakeNode("body",document),{dataset:{page:"console"}});
+  document.getElementById=id=>document.nodes[id]||(document.nodes[id]=Object.assign(new FakeNode("div",document),{id}));
+  const events={}, {C,context}=model({document,Node:FakeNode,location:{hash:"",assign(){}},addEventListener(name,callback){events[name]=callback;},...extra});
+  C.initFleet=()=>{};C.initOperations=()=>{};C.initPolicy=()=>{};C.request=()=>new Promise(()=>{});
+  vm.runInContext(source("app.js"),context);
+  return {C,context,document,events};
 }
 test("closing issuance dialog clears secret synchronously before native close event",()=>{
   const document={nodes:{},body:{dataset:{page:"console"}},activeElement:null,title:"",createElement(tag){return new FakeNode(tag,this);}};
@@ -179,4 +191,56 @@ test("all login error variants are safe Korean messages",()=>{
     const error={textContent:"",hidden:true},context=vm.createContext({document:{body:{dataset:{page:"login"}},getElementById:()=>error},location:{search:`?error=${encodeURIComponent(code)}`},URLSearchParams});
     vm.runInContext(source("app.js"),context);assert.equal(error.hidden,false);assert.match(error.textContent,/[가-힣]/);assert.doesNotMatch(error.textContent,/<script>/);
   }
+});
+
+
+test("complete installation code is shown and downloaded instead of the legacy secret",async()=>{
+  let displayed,operation;
+  const document={nodes:{},activeElement:null,createElement(tag){return new FakeNode(tag,this);},createDocumentFragment(){return new FakeNode("fragment",this);}};
+  document.getElementById=id=>document.nodes[id]||(document.nodes[id]=new FakeNode("div",document));
+  const {C,context}=model({document,Node:FakeNode});
+  C.showSecret=value=>{displayed=value;};C.notify=()=>{};C.run=(_button,callback)=>{operation=callback();return operation;};
+  C.request=async()=>({agent_id:"new-agent",token:"legacy-secret-must-not-be-shown",installation_code:"xeas1.complete-installation-code",expires_at:"2026-11-17T04:00:00Z"});
+  vm.runInContext(source("operations.js"),context);C.initOperations();
+  C.updateState({enrollment:{ready:true,central_url:"https://central.example:9443"}});
+  assert.equal(C.state.enrollment.ready,true);assert.equal(C.state.enrollment.central_url,"https://central.example:9443");
+  assert.match(C.id("enrollmentReadiness").textContent,/https:\/\/central.example:9443/);assert.equal(C.id("enrollmentSubmit").textContent,"설치 토큰 발급");
+  C.id("enrollmentAgent").value="new-agent";C.id("enrollmentTTL").value="900";
+  C.id("enrollmentForm").handlers.submit({preventDefault(){},submitter:new FakeNode("button",document)});await operation;
+  assert.equal(displayed.text,"xeas1.complete-installation-code");assert.equal(displayed.filename,"enrollment-new-agent.xeas");assert.match(displayed.title,/설치 토큰/);
+  assert.doesNotMatch(JSON.stringify(displayed),/legacy-secret/);assert.match(JSON.stringify(displayed.facts),/붙여 넣으세요/);
+  C.updateState({});assert.equal(C.state.enrollment.ready,false);assert.match(C.id("enrollmentReadiness").textContent,/설정되지 않아/);
+  C.request=async()=>({agent_id:"new-agent",token:"legacy-token",expires_at:"2026-11-17T04:00:00Z"});
+  C.id("enrollmentForm").handlers.submit({preventDefault(){},submitter:new FakeNode("button",document)});await operation;
+  assert.equal(displayed.text,"legacy-token");assert.equal(displayed.filename,"enrollment-new-agent.token");assert.match(displayed.title,/기존 방식/);
+});
+
+for(const outcome of ["resolve","reject"])test(`closing issuance dialog during clipboard ${outcome} cannot restore secret UI`,async()=>{
+  let finish;
+  const pending=new Promise((resolve,reject)=>{finish=outcome==="resolve"?resolve:reject;});
+  const {C,document}=appHarness({navigator:{clipboard:{writeText:()=>pending}}});
+  C.showSecret({title:"설치 토큰",text:"xeas1.secret",filename:"agent.xeas",facts:[]});
+  const copy=C.id("copySecret").handlers.click();C.id("secretClose").handlers.click();
+  finish(outcome==="reject"?new Error("clipboard blocked"):undefined);await copy;
+  assert.equal(C.id("secretValue").value,"");assert.equal(C.id("secretStatus").textContent,"");assert.equal(C.id("secretFacts").children.length,0);assert.equal(C.id("secretDialog").open,false);assert.equal(document.selected,undefined);
+});
+
+test("late clipboard completion cannot change a new issuance dialog",async()=>{
+  let finish;const pending=new Promise(resolve=>{finish=resolve;});
+  const {C}=appHarness({navigator:{clipboard:{writeText:()=>pending}}});
+  C.showSecret({title:"First",text:"old-secret",filename:"first.xeas",facts:[]});
+  const copy=C.id("copySecret").handlers.click();C.id("secretClose").handlers.click();
+  C.showSecret({title:"Second",text:"new-secret",filename:"second.xeas",facts:[]});
+  C.id("secretDialog").handlers.close();
+  finish();await copy;
+  assert.equal(C.id("secretValue").value,"new-secret");assert.equal(C.id("secretStatus").textContent,"");
+});
+
+test("installation code download uses exact file content and pagehide clears issuance",async()=>{
+  let downloaded,revoked,cleanup;
+  const {C,document,events}=appHarness({Blob,URL:{createObjectURL:blob=>{downloaded=blob;return "blob:installation";},revokeObjectURL:url=>{revoked=url;}},setTimeout:callback=>{cleanup=callback;}});
+  C.showSecret({title:"설치 토큰",text:"xeas1.complete",filename:"enrollment-agent.xeas",type:"text/plain",facts:[]});
+  C.id("downloadSecret").handlers.click();
+  assert.equal(await downloaded.text(),"xeas1.complete\n");assert.equal(document.clicked.download,"enrollment-agent.xeas");assert.equal(document.clicked.href,"blob:installation");cleanup();assert.equal(revoked,"blob:installation");
+  events.pagehide();assert.equal(C.id("secretValue").value,"");assert.equal(C.id("secretFacts").children.length,0);
 });

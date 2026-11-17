@@ -3,7 +3,7 @@
 // Shared state, evidence-based presentation and DOM construction.
 (function (root) {
   const C = root.XEC = {};
-  C.state = {agents: [], groups: [], templates: [], defaults: {}};
+  C.state = {agents: [], groups: [], templates: [], defaults: {}, enrollment: {}};
   C.session = null;
   C.view = "overview";
   C.selectedAgent = "";
@@ -235,7 +235,7 @@
   C.updateState = next => {
     const serverTime = Date.parse(next.server_time);
     if (Number.isFinite(serverTime)) C.clockOffset = serverTime - Date.now();
-    C.state = {agents: C.array(next.agents), groups: C.array(next.groups), templates: C.array(next.templates), defaults: C.object(next.defaults), server_time: next.server_time};
+    C.state = {agents: C.array(next.agents), groups: C.array(next.groups), templates: C.array(next.templates), defaults: C.object(next.defaults), enrollment: {ready: C.object(next.enrollment).ready === true, central_url: C.object(next.enrollment).central_url || ""}, server_time: next.server_time};
     C.listeners.forEach(fn => fn());
   };
   if (typeof module !== "undefined" && module.exports) module.exports = C;

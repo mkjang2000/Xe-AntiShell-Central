@@ -26,6 +26,7 @@ func serve(args []string, stderr io.Writer) error {
 	directory := flags.String("state-dir", defaultStateDirectory, "central state directory")
 	agentAddress := flags.String("listen", "127.0.0.1:9443", "HTTPS agent listener")
 	adminAddress := flags.String("admin-listen", "127.0.0.1:9444", "loopback operator API listener")
+	enrollmentURL := flags.String("enrollment-url", "", "explicit HTTPS agent origin for complete installation codes; certificate must cover its hostname")
 	allowPublic := flags.Bool("allow-non-loopback", false, "allow a non-loopback agent listener")
 	panelAddress := flags.String("panel-listen", "127.0.0.1:9089", "console listener; empty disables; requires initialized panel credentials")
 	allowPublicPanel := flags.Bool("allow-non-loopback-panel", false, "allow a non-loopback console listener")
@@ -56,6 +57,11 @@ func serve(args []string, stderr io.Writer) error {
 	if err := options.Validate(); err != nil {
 		return err
 	}
+	if *enrollmentURL != "" {
+		if err := central.ValidateEnrollmentURL(*enrollmentURL); err != nil {
+			return err
+		}
+	}
 	material, err := central.LoadMaterial(*directory)
 	if err != nil {
 		return err
@@ -68,6 +74,9 @@ func serve(args []string, stderr io.Writer) error {
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
 	backend, err := central.NewServer(store, material, logger)
 	if err != nil {
+		return err
+	}
+	if err = backend.ConfigureEnrollmentURL(*enrollmentURL); err != nil {
 		return err
 	}
 	var servers []*http.Server

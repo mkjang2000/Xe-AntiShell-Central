@@ -135,9 +135,10 @@
     C.id("enrollmentForm").addEventListener("submit",event=>{
       event.preventDefault();C.run(event.submitter,async()=>{
         const agentID=C.id("enrollmentAgent").value.trim();
-        if(C.state.agents.some(a=>a.agent_id===agentID&&!a.revoked)&&!await C.confirm({title:"기존 에이전트의 새 등록 토큰",description:`'${agentID}'가 이미 등록되어 있습니다. 새 토큰으로 재등록하면 현재 등록이 교체되어 기존 인증서와 정책 연결에 영향을 줍니다.`,accept:"등록 토큰 발급"}))return;
+        if(C.state.agents.some(a=>a.agent_id===agentID&&!a.revoked)&&!await C.confirm({title:"기존 에이전트의 새 등록 토큰",description:`'${agentID}'가 이미 등록되어 있습니다. 새 토큰으로 재등록하면 현재 등록이 교체되어 기존 인증서와 정책 연결에 영향을 줍니다.`,accept:"토큰 발급"}))return;
         const result=await C.request("/api/enrollment",{method:"POST",body:{agent_id:agentID,ttl_seconds:Number(C.id("enrollmentTTL").value)}});
-        C.showSecret({title:"등록 토큰 발급 완료",text:result.token,filename:`enrollment-${agentID}.token`,type:"text/plain",facts:[["대상 에이전트",result.agent_id],["만료 시각",C.time(result.expires_at)]]});C.notify("등록 토큰을 발급했습니다. 비밀값은 발급 결과 창에서만 확인할 수 있습니다.");
+        const complete=typeof result.installation_code==="string"&&result.installation_code.length>0;
+        C.showSecret({title:complete?"설치 토큰 발급 완료":"기존 방식 등록 토큰 발급 완료",text:complete?result.installation_code:result.token,filename:`enrollment-${agentID}${complete?".xeas":".token"}`,type:"text/plain",facts:[["대상 에이전트",result.agent_id],["만료 시각",C.time(result.expires_at)],["사용 방법",complete?"대상 서버에서 install.sh를 실행하고 중앙 연결 단계에 설치 토큰을 붙여 넣으세요.":"기존 등록 방식에 사용하세요. 중앙 주소와 CA 인증서가 별도로 필요합니다."]]});C.notify("토큰을 발급했습니다. 비밀값은 발급 결과 창에서만 확인할 수 있습니다.");
       });
     });
     C.id("removalAgent").addEventListener("change",C.populateRemoval);
@@ -166,6 +167,9 @@
     C.id("refreshAudit").addEventListener("click",()=>C.run(C.id("refreshAudit"),()=>C.loadAudit(true)));
     C.id("auditSearch").addEventListener("input",renderAudit);
     C.onState(()=>{
+      const enrollment=C.object(C.state.enrollment),ready=enrollment.ready===true;
+      C.text("enrollmentReadiness",ready?`중앙 연결 주소: ${enrollment.central_url}. 설치 토큰에 주소와 공개 CA 인증서가 함께 포함됩니다.`:"중앙 서버의 에이전트 접속 주소가 설정되지 않아 기존 방식 등록 토큰을 발급합니다. 중앙 주소와 CA 인증서는 별도로 전달하세요.");
+      C.text("enrollmentSubmit",ready?"설치 토큰 발급":"기존 방식 등록 토큰 발급");
       if(!group.initialized){group.initialized=true;fillGroup(null);}else{renderGroupList();C.choices("groupMembers",memberOptions(),"member","등록된 에이전트가 없습니다.");}
       const agents=C.state.agents.filter(a=>!a.revoked).map(a=>[a.agent_id,`${a.agent_id}${a.hostname?` · ${a.hostname}`:""}`]);
       C.options("historyAgent",C.state.agents.map(a=>[a.agent_id,a.agent_id]),"전체 에이전트");

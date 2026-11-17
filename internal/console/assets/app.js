@@ -14,7 +14,7 @@
     groups:["서버 그룹","SERVER GROUPS","서버를 운영 단위로 묶어 정책 배포 대상을 관리합니다."],
     policies:["보안 정책","POLICY CONTROL","정책을 저장하고 배포 대상을 미리 확인한 후 적용합니다."],
     history:["탐지·실행 이력","DETECTION & HISTORY","중앙에 전달된 탐지 근거와 실행 기록을 검토합니다."],
-    approvals:["등록·제거 승인","ENROLLMENT & APPROVALS","단일 서버 등록 토큰과 일회용 제거 승인을 발급합니다."],
+    approvals:["등록·제거 승인","ENROLLMENT & APPROVALS","단일 서버 설치 토큰과 일회용 제거 승인을 발급합니다."],
     audit:["감사 기록","OPERATOR AUDIT","정책 변경과 등록·승인 등 중앙 관리 작업을 확인합니다."]
   };
   let refreshing = null, recentGeneration = 0, started = false;
@@ -40,14 +40,14 @@
     C.id("secretFacts").replaceWith(Object.assign(C.facts(value.facts),{id:"secretFacts"}));C.text("secretStatus","");C.id("secretDialog").showModal();C.id("downloadSecret").focus();
   };
   const clearSecret = () => {secret=null;C.id("secretValue").value="";C.id("secretFacts").replaceChildren();C.text("secretStatus","");};
-  C.id("secretDialog").addEventListener("close",clearSecret);
+  C.id("secretDialog").addEventListener("close",()=>{if(!C.id("secretDialog").open)clearSecret();});
   C.id("secretDialog").addEventListener("cancel",clearSecret);
   const dismissSecret=()=>{clearSecret();C.id("secretDialog").close();};
   C.id("secretClose").addEventListener("click",dismissSecret);C.id("dismissSecret").addEventListener("click",dismissSecret);
   C.id("copySecret").addEventListener("click",async()=>{
-    if(!secret)return;
-    try{await navigator.clipboard.writeText(secret.text);C.text("secretStatus","복사했습니다. 안전한 위치에 보관하세요.");}
-    catch(_){C.id("secretValue").focus();C.id("secretValue").select();C.text("secretStatus","자동 복사가 허용되지 않습니다. 선택된 값을 직접 복사하세요.");}
+    if(!secret)return;const displayed=secret;
+    try{await navigator.clipboard.writeText(displayed.text);if(secret===displayed)C.text("secretStatus","복사했습니다. 안전한 위치에 보관하세요.");}
+    catch(_){if(secret!==displayed)return;C.id("secretValue").focus();C.id("secretValue").select();C.text("secretStatus","자동 복사가 허용되지 않습니다. 선택된 값을 직접 복사하세요.");}
   });
   C.id("downloadSecret").addEventListener("click",()=>{
     if(!secret)return;const url=URL.createObjectURL(new Blob([secret.text+"\n"],{type:secret.type}));
@@ -84,6 +84,7 @@
     if((C.hasUnsavedPolicy()||C.hasUnsavedGroup())&&!await C.confirm({title:"로그아웃 확인",description:"저장하지 않은 편집 내용이 있습니다. 로그아웃하면 편집 내용과 발급 결과가 사라집니다.",accept:"로그아웃"}))return;
     await C.request("/logout",{method:"POST"});clearSecret();location.assign("/login");
   }));
+  globalThis.addEventListener("pagehide",clearSecret);
   globalThis.addEventListener("hashchange",navigate);
   globalThis.addEventListener("beforeunload",event=>{if(C.hasUnsavedPolicy()||C.hasUnsavedGroup()){event.preventDefault();event.returnValue="";}});
   C.initFleet();C.initOperations();C.initPolicy();navigate();
