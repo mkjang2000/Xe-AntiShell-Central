@@ -47,6 +47,15 @@ Kernel `task_start_time_ns` is a positive uint64 decimal string on the wire.
 The UI validates its format and range without numeric coercion, displays it
 unchanged, and labels it as a monotonic identity value rather than calendar time.
 
+Application and capability-difference presentation requires complete snapshots,
+stable matching task identity, the fixed source tuple, and usable quality-marked
+evidence. Only the exact `missing_fields` marker
+`credential.user_namespace_scope` is advisory when a valid snapshot namespace
+has unknown `is_host`. That uncertainty does not erase the complete credential
+pair or establish host scope. Prefix lookalikes, contradictory known-scope data,
+other missing evidence, and every redacted/truncated marker remain disqualifying.
+Fields marked missing/redacted/truncated are also hidden in bounded summaries.
+
 New history types and current-policy detail are available without raw JSON
 editing. Technical raw records remain available under existing access controls.
 The capability editor distinguishes optional observations from recommended
@@ -60,6 +69,9 @@ response conditions and no longer claims file/network observation is absent.
 - JavaScript tests cover opt-in/root mode round trips, disabled-field omission,
   root-only validation, supported engine vs receipt, UID0/unknown/ns/capability
   distinctions, malformed presentation, rule labels and module wiring.
+- Scope-advisory regressions preserve complete unknown-scope applied pairs and
+  capability differences while rejecting missing values, marker lookalikes,
+  known-scope contradictions, redaction, truncation and mismatched task identity.
 - Exact task identity tests cover values beyond JavaScript's safe integer range
   through uint64 maximum, with numeric JSON, zero and overflow rejected at ingest
   and malformed strings left explicitly unknown in the UI.
