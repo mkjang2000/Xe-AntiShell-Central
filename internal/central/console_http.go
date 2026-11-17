@@ -21,6 +21,7 @@ func (s *Server) ConsoleHandler() http.Handler {
 	mux.HandleFunc("GET /api/state", s.consoleState)
 	mux.HandleFunc("GET /api/agents/{id}/policy", s.consoleAgentPolicy)
 	mux.HandleFunc("GET /api/history", s.consoleHistory)
+	mux.HandleFunc("GET /api/errors", s.consoleErrorHistory)
 	mux.HandleFunc("GET /api/audit", s.consoleAudit)
 	mux.HandleFunc("POST /api/groups", s.consoleSaveGroup)
 	mux.HandleFunc("DELETE /api/groups/{id}", s.consoleDeleteGroup)

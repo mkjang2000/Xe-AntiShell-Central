@@ -201,7 +201,7 @@ function appHarness(extra={}) {
   document.body=Object.assign(new FakeNode("body",document),{dataset:{page:"console"}});
   document.getElementById=id=>document.nodes[id]||(document.nodes[id]=Object.assign(new FakeNode("div",document),{id}));
   const events={}, {C,context}=model({document,Node:FakeNode,location:{hash:"",assign(){}},addEventListener(name,callback){events[name]=callback;},...extra});
-  C.initFleet=()=>{};C.initOperations=()=>{};C.initPolicy=()=>{};C.request=()=>new Promise(()=>{});
+  C.initFleet=()=>{};C.initOperations=()=>{};C.initHistory=()=>{};C.initPolicy=()=>{};C.initAccounts=()=>{};C.applyAccess=()=>{};C.request=()=>new Promise(()=>{});
   vm.runInContext(source("app.js"),context);
   return {C,context,document,events};
 }
@@ -248,7 +248,7 @@ test("closing issuance dialog clears secret synchronously before native close ev
   const document={nodes:{},body:{dataset:{page:"console"}},activeElement:null,title:"",createElement(tag){return new FakeNode(tag,this);}};
   document.getElementById=id=>document.nodes[id]||(document.nodes[id]=Object.assign(new FakeNode("div",document),{id}));
   const {C,context}=model({document,Node:FakeNode,location:{hash:"",assign(){}},addEventListener(){}});
-  C.initFleet=()=>{};C.initOperations=()=>{};C.initPolicy=()=>{};C.request=()=>new Promise(()=>{});
+  C.initFleet=()=>{};C.initOperations=()=>{};C.initHistory=()=>{};C.initPolicy=()=>{};C.initAccounts=()=>{};C.applyAccess=()=>{};C.request=()=>new Promise(()=>{});
   vm.runInContext(source("app.js"),context);
   C.showSecret({title:"Test token",text:"sensitive-token",filename:"test.token",facts:[["대상","web-01"]]});
   assert.equal(C.id("secretValue").value,"sensitive-token");

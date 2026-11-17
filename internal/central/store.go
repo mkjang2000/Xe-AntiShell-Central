@@ -117,6 +117,9 @@ func (s *Store) initializeSchema(ctx context.Context) error {
 	if _, err = tx.ExecContext(ctx, consoleSchema); err != nil {
 		return err
 	}
+	if err = initializeErrorHistory(ctx, tx); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, "PRAGMA user_version=2"); err != nil {
 		return err
 	}

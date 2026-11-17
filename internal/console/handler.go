@@ -5,6 +5,7 @@
 package console
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"embed"
@@ -30,13 +31,15 @@ const (
 var assets embed.FS
 
 type server struct {
-	credentials Credentials
-	api         http.Handler
-	logger      *slog.Logger
-	now         func() time.Time
-	limiter     *loginLimiter
-	loginSlots  chan struct{}
-	origin      originPolicy
+	credentials     Credentials
+	accounts        *accountStore
+	api             http.Handler
+	logger          *slog.Logger
+	now             func() time.Time
+	limiter         *loginLimiter
+	passwordLimiter *loginLimiter
+	loginSlots      chan struct{}
+	origin          originPolicy
 }
 
 // New wraps a central business API with browser authentication. The supplied
@@ -67,18 +70,26 @@ func NewWithOptions(credentials Credentials, apiHandler http.Handler, logger *sl
 			return nil, err
 		}
 	}
+	accounts, err := openAccountStore(options.AccountsPath, credentials)
+	if err != nil {
+		return nil, err
+	}
 	return &server{
-		credentials: credentials,
-		api:         apiHandler,
-		logger:      logger,
-		now:         time.Now,
-		limiter:     newLoginLimiter(),
-		origin:      origin,
+		credentials:     credentials,
+		accounts:        accounts,
+		api:             apiHandler,
+		logger:          logger,
+		now:             time.Now,
+		limiter:         newLoginLimiter(),
+		passwordLimiter: newLoginLimiter(),
+		origin:          origin,
 		// At most one expensive password verification per console. This also
 		// bounds Argon2 memory when requests use many different source IPs.
 		loginSlots: make(chan struct{}, 1),
 	}, nil
 }
+
+func (s *server) Close() error { return s.accounts.db.Close() }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	securityHeaders(w)
@@ -110,7 +121,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/assets/"):
 		name := strings.TrimPrefix(r.URL.Path, "/assets/")
 		switch name {
-		case "app.css", "app.js", "model.js", "fleet.js", "policy.js", "operations.js":
+		case "app.css", "app.js", "model.js", "fleet.js", "policy.js", "operations.js", "accounts.js", "access.js", "theme.js", "theme.css", "history.js", "capability-editor.js":
 		default:
 			http.NotFound(w, r)
 			return
@@ -155,11 +166,14 @@ func (s *server) serveAsset(w http.ResponseWriter, r *http.Request, name string)
 	_, _ = w.Write(data)
 }
 
-func (s *server) authenticate(w http.ResponseWriter, r *http.Request, api bool) (string, bool) {
+func (s *server) authenticate(w http.ResponseWriter, r *http.Request, api bool) (Account, bool) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err == nil {
-		if username, err := s.credentials.VerifySession(cookie.Value, s.now()); err == nil {
-			return username, true
+		record, err := s.accounts.get(r.Context(), sessionUsername(cookie.Value))
+		if err == nil {
+			if _, err = record.credentials.VerifySession(cookie.Value, s.now()); err == nil {
+				return record.Account, true
+			}
 		}
 	}
 	if api {
@@ -167,11 +181,11 @@ func (s *server) authenticate(w http.ResponseWriter, r *http.Request, api bool) 
 	} else {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	}
-	return "", false
+	return Account{}, false
 }
 
 func (s *server) serveAPI(w http.ResponseWriter, r *http.Request) {
-	username, ok := s.authenticate(w, r, true)
+	account, ok := s.authenticate(w, r, true)
 	if !ok {
 		return
 	}
@@ -181,7 +195,7 @@ func (s *server) serveAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		cookie, _ := r.Cookie(sessionCookieName)
-		writeJSON(w, http.StatusOK, map[string]string{"username": username, "csrf_token": s.csrfToken(cookie.Value)})
+		writeJSON(w, http.StatusOK, map[string]string{"username": account.Username, "role": string(account.Role), "csrf_token": s.csrfToken(cookie.Value)})
 		return
 	}
 	switch r.Method {
@@ -195,6 +209,15 @@ func (s *server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxAPIBody)
+	if r.URL.Path == "/api/account/password" || r.URL.Path == "/api/account-audit" || r.URL.Path == "/api/accounts" || strings.HasPrefix(r.URL.Path, "/api/accounts/") {
+		s.serveAccounts(w, r, account)
+		return
+	}
+	if !allowsAPI(account.Role, r.Method, r.URL.Path) {
+		denyAccountAccess(w)
+		return
+	}
+	r = r.WithContext(context.WithValue(r.Context(), accountContextKey{}, account))
 	s.api.ServeHTTP(w, r)
 }
 
@@ -243,11 +266,17 @@ func (s *server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		s.loginError(w, r, "request")
 		return
 	}
-	if !s.credentials.Verify(r.PostForm.Get("username"), r.PostForm.Get("password")) {
+	record, accountErr := s.accounts.get(r.Context(), r.PostForm.Get("username"))
+	credentials := s.credentials
+	if accountErr == nil {
+		credentials = record.credentials
+	}
+	valid := credentials.Verify(r.PostForm.Get("username"), r.PostForm.Get("password"))
+	if accountErr != nil || !valid {
 		s.loginError(w, r, "invalid")
 		return
 	}
-	token, err := s.credentials.NewSession(s.now(), sessionLifetime)
+	token, err := credentials.NewSession(s.now(), sessionLifetime)
 	if err != nil {
 		s.logger.Error("console session creation failed")
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "로그인을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요."})

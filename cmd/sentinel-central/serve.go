@@ -43,7 +43,7 @@ func serve(args []string, stderr io.Writer) error {
 	if (*panelCert == "") != (*panelKey == "") {
 		return errors.New("console TLS certificate and key must be provided together")
 	}
-	options := console.Options{}
+	options := console.Options{AccountsPath: filepath.Join(*directory, "panel-accounts.db")}
 	if *panelPublicOrigin != "" {
 		options.PublicOrigin = *panelPublicOrigin
 		options.TrustedProxies = strings.Split(*panelTrustedProxies, ",")
@@ -114,6 +114,9 @@ func serve(args []string, stderr io.Writer) error {
 			handler, err := console.NewWithOptions(credentials, backend.ConsoleHandler(), logger, options)
 			if err != nil {
 				return err
+			}
+			if closer, ok := handler.(io.Closer); ok {
+				defer closer.Close()
 			}
 			var config *tls.Config
 			if *panelCert != "" {

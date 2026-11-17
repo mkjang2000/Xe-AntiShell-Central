@@ -14,38 +14,38 @@ func TestProxyOptionsValidation(t *testing.T) {
 		valid   bool
 	}{
 		{"native defaults", Options{}, true},
-		{"public loopback proxy", Options{"https://console.example", []string{"127.0.0.1/32", "::1/128"}}, true},
-		{"public custom proxy", Options{"https://console.example:8443", []string{"192.0.2.0/24"}}, true},
-		{"IPv6 public origin", Options{"https://[2001:db8::1]:8443", []string{"::1/128"}}, true},
-		{"proxies without origin", Options{"", []string{"127.0.0.1/32"}}, false},
+		{"public loopback proxy", Options{PublicOrigin: "https://console.example", TrustedProxies: []string{"127.0.0.1/32", "::1/128"}}, true},
+		{"public custom proxy", Options{PublicOrigin: "https://console.example:8443", TrustedProxies: []string{"192.0.2.0/24"}}, true},
+		{"IPv6 public origin", Options{PublicOrigin: "https://[2001:db8::1]:8443", TrustedProxies: []string{"::1/128"}}, true},
+		{"proxies without origin", Options{PublicOrigin: "", TrustedProxies: []string{"127.0.0.1/32"}}, false},
 		{"origin without proxies", Options{PublicOrigin: "https://console.example"}, false},
-		{"empty proxy", Options{"https://console.example", []string{""}}, false},
-		{"IP without prefix", Options{"https://console.example", []string{"127.0.0.1"}}, false},
-		{"hostname proxy", Options{"https://console.example", []string{"localhost/32"}}, false},
-		{"invalid prefix", Options{"https://console.example", []string{"127.0.0.1/33"}}, false},
-		{"all IPv4 peers", Options{"https://console.example", []string{"0.0.0.0/0"}}, false},
-		{"all IPv6 peers", Options{"https://console.example", []string{"::/0"}}, false},
-		{"all mapped IPv4 peers", Options{"https://console.example", []string{"::ffff:0.0.0.0/96"}}, false},
-		{"HTTP origin", Options{"http://console.example", []string{"127.0.0.1/32"}}, false},
-		{"scheme only", Options{"https:", []string{"127.0.0.1/32"}}, false},
-		{"missing scheme", Options{"console.example", []string{"127.0.0.1/32"}}, false},
-		{"missing host", Options{"https://", []string{"127.0.0.1/32"}}, false},
-		{"opaque origin", Options{"https:console.example", []string{"127.0.0.1/32"}}, false},
-		{"credentials", Options{"https://user:password@console.example", []string{"127.0.0.1/32"}}, false},
-		{"path", Options{"https://console.example/login", []string{"127.0.0.1/32"}}, false},
-		{"trailing slash", Options{"https://console.example/", []string{"127.0.0.1/32"}}, false},
-		{"query", Options{"https://console.example?x=1", []string{"127.0.0.1/32"}}, false},
-		{"empty query", Options{"https://console.example?", []string{"127.0.0.1/32"}}, false},
-		{"fragment", Options{"https://console.example#login", []string{"127.0.0.1/32"}}, false},
-		{"empty fragment", Options{"https://console.example#", []string{"127.0.0.1/32"}}, false},
-		{"bad port", Options{"https://console.example:abc", []string{"127.0.0.1/32"}}, false},
-		{"empty port", Options{"https://console.example:", []string{"127.0.0.1/32"}}, false},
-		{"zero port", Options{"https://console.example:0", []string{"127.0.0.1/32"}}, false},
-		{"out of range port", Options{"https://console.example:65536", []string{"127.0.0.1/32"}}, false},
-		{"noncanonical port", Options{"https://console.example:0443", []string{"127.0.0.1/32"}}, false},
-		{"unbracketed IPv6", Options{"https://2001:db8::1", []string{"127.0.0.1/32"}}, false},
-		{"bracketed hostname", Options{"https://[console.example]", []string{"127.0.0.1/32"}}, false},
-		{"IPv6 zone", Options{"https://[fe80::1%25eth0]", []string{"127.0.0.1/32"}}, false},
+		{"empty proxy", Options{PublicOrigin: "https://console.example", TrustedProxies: []string{""}}, false},
+		{"IP without prefix", Options{PublicOrigin: "https://console.example", TrustedProxies: []string{"127.0.0.1"}}, false},
+		{"hostname proxy", Options{PublicOrigin: "https://console.example", TrustedProxies: []string{"localhost/32"}}, false},
+		{"invalid prefix", Options{PublicOrigin: "https://console.example", TrustedProxies: []string{"127.0.0.1/33"}}, false},
+		{"all IPv4 peers", Options{PublicOrigin: "https://console.example", TrustedProxies: []string{"0.0.0.0/0"}}, false},
+		{"all IPv6 peers", Options{PublicOrigin: "https://console.example", TrustedProxies: []string{"::/0"}}, false},
+		{"all mapped IPv4 peers", Options{PublicOrigin: "https://console.example", TrustedProxies: []string{"::ffff:0.0.0.0/96"}}, false},
+		{"HTTP origin", Options{PublicOrigin: "http://console.example", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"scheme only", Options{PublicOrigin: "https:", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"missing scheme", Options{PublicOrigin: "console.example", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"missing host", Options{PublicOrigin: "https://", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"opaque origin", Options{PublicOrigin: "https:console.example", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"credentials", Options{PublicOrigin: "https://user:password@console.example", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"path", Options{PublicOrigin: "https://console.example/login", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"trailing slash", Options{PublicOrigin: "https://console.example/", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"query", Options{PublicOrigin: "https://console.example?x=1", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"empty query", Options{PublicOrigin: "https://console.example?", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"fragment", Options{PublicOrigin: "https://console.example#login", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"empty fragment", Options{PublicOrigin: "https://console.example#", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"bad port", Options{PublicOrigin: "https://console.example:abc", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"empty port", Options{PublicOrigin: "https://console.example:", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"zero port", Options{PublicOrigin: "https://console.example:0", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"out of range port", Options{PublicOrigin: "https://console.example:65536", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"noncanonical port", Options{PublicOrigin: "https://console.example:0443", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"unbracketed IPv6", Options{PublicOrigin: "https://2001:db8::1", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"bracketed hostname", Options{PublicOrigin: "https://[console.example]", TrustedProxies: []string{"127.0.0.1/32"}}, false},
+		{"IPv6 zone", Options{PublicOrigin: "https://[fe80::1%25eth0]", TrustedProxies: []string{"127.0.0.1/32"}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := tc.options.Validate(); (err == nil) != tc.valid {
@@ -59,7 +59,7 @@ func TestProxyOptionsValidation(t *testing.T) {
 }
 
 func TestProxyOriginUsesRealPeerAndPublicHost(t *testing.T) {
-	policy, err := (Options{"https://console.example", []string{"127.0.0.1/32", "::1/128"}}).originPolicy()
+	policy, err := (Options{PublicOrigin: "https://console.example", TrustedProxies: []string{"127.0.0.1/32", "::1/128"}}).originPolicy()
 	if err != nil {
 		t.Fatal(err)
 	}

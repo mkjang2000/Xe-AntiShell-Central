@@ -18,9 +18,15 @@
 Xe-AntiShell-Central/
 ├── cmd/sentinel-central/          # Thin init/token/server CLI
 ├── internal/central/              # PKI, SQLite, agent and operator HTTP APIs
-│   └── enrollment_code.go        # Certificate-bound endpoint config and installation-code issuance
-├── internal/console/              # Administrator auth, sessions, CSRF and HTTP wrapper
-│   └── assets/                    # Embedded Korean console, feature modules and JS tests
+│   ├── enrollment_code.go        # Certificate-bound endpoint config and installation-code issuance
+│   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
+│   ├── history_read.go           # Separate finding/event/error/audit projections
+│   └── agent_errors.go           # Durable deduplicated error transitions from heartbeats
+├── internal/console/              # Authentication, enforced roles, sessions and CSRF
+│   ├── accounts_store.go         # Persistent accounts, final-admin guard and account audit
+│   ├── accounts_auth.go          # Per-request identity and role authorization
+│   ├── accounts_http.go          # Account/password administration APIs
+│   └── assets/                    # Korean fleet, policies, histories, accounts and dark/light themes
 ├── packaging/
 │   ├── rpm/xe-antishell-central.spec
 │   ├── systemd/sentinel-central.service
@@ -51,7 +57,8 @@ Explicit init → private CA, TLS and signing material + central SQLite database
 Agent enrollment token + CSR → scoped certificate and enrollment generation
 Agent mTLS batch → authenticated transaction → durable ACK
 Loopback operator API → signed policy / removal grant / revocation
-Console session + CSRF → group/template editor → preview → atomic signed deployment
+Console session → current account/role → CSRF → group/template editor → preview → atomic signed deployment
+Heartbeat → latest state + deduplicated error transitions → filtered history views
 Authenticated console → installation code with public CA → agent wizard → verified TLS enrollment
 ```
 
@@ -79,3 +86,13 @@ Authenticated console → installation code with public CA → agent wizard → 
 - Versioned templates retain desired integrity settings centrally; wire v1 agents
   receive supported settings only. Pending settings and agent application status
   are displayed separately. Group edits have no automatic policy effects.
+
+- Console accounts persist in a separate private `panel-accounts.db`; the legacy
+  auth file seeds the initial administrator only once. Password/role changes
+  rotate account session keys. All API mutations enforce roles and CSRF.
+- Central records retain their original immutable payloads; finding/event views
+  project individual items before filtering/pagination. Operational error history
+  stores categories and transitions, preserving no historical raw diagnostics.
+- Browser modules separate account administration, history filters, permission
+  presentation, capability editing and theme preferences. No frontend build or
+  third-party browser runtime dependency is required.

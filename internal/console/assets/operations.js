@@ -2,8 +2,6 @@
 
 (function (C) {
   const group = {initialized:false,dirty:false};
-  const history = {items:[],cursors:[""],page:0,next:"",generation:0,loaded:false};
-  const audit = {items:[],cursors:[""],page:0,next:"",generation:0,loaded:false};
   C.checked = id => [...C.id(id).querySelectorAll("input[type=checkbox]:checked")].map(input => input.value);
   C.options = (id, values, placeholder) => {
     const select = C.id(id), current = select.value, fragment = document.createDocumentFragment();
@@ -64,7 +62,6 @@
     const names={critical:"매우 높음",high:"높음",medium:"보통",low:"낮음",info:"정보"};
     return C.tag(names[value]||"미분류",["critical","high"].includes(value)?"danger":value==="medium"?"warning":"neutral");
   };
-  const responseLabel = value => ({observe:"탐지 전용",detection_only:"확장 탐지 전용",would_block:"모의 대응 대상",below_threshold:"대응 기준 미달",insufficient_capability:"기능 조건 미충족",terminate_pending:"종료 요청 준비",sigterm_sent:"종료 신호 전송",refused:"안전 조건 미충족",not_repeated:"재실행 생략"}[value]||"대응 보고 없음");
   const findingSummary = finding => finding.summary || finding.rule_id || "의심 행위 탐지";
   C.renderRecent = records => {
     const findings=records.flatMap(record=>C.findings(record).map(finding=>({record,finding}))).slice(0,5);
@@ -72,60 +69,6 @@
       const row=C.el("div","list-row"),identity=C.el("div","identity");identity.append(C.el("strong","",findingSummary(finding)),C.el("small","",`${record.agent_id} · ${finding.origin_service||"서비스 미확인"} · ${C.time(finding.created_at||record.received_at)}`));
       row.append(identity,severity(finding.severity),C.button("이력",()=>{C.id("historyAgent").value=record.agent_id;C.id("historyKind").value="detections";globalThis.location.hash="history";C.loadHistory(true);},"mini-button"));return row;
     }):[C.empty("중앙에 보존된 탐지 기록이 없습니다.")]));
-  };
-  const recordCard = record => {
-    const payload=C.object(record.payload),findings=C.findings(record),event=record.kind==="event_bundle"?C.object(payload.event):payload,process=C.object(event.process);
-    const names={finding:"탐지",event:"실행 이력",event_bundle:"실행·탐지 묶음",audit:"에이전트 감사"};
-    const card=C.el("article",`record${findings.length?" finding":""}`),head=C.el("div","record-head");
-    const title=C.el("span","record-title",`${record.agent_id} · ${names[record.kind]||record.kind}`);head.append(title,C.el("time","",C.time(record.received_at)));card.append(head);
-    if(findings.length){
-      for(const finding of findings){
-        const summary=C.el("p","record-summary");summary.append(severity(finding.severity),document.createTextNode(` ${findingSummary(finding)}`));card.append(summary);
-        const meta=C.el("div","record-meta");meta.append(C.el("span","",`서비스: ${finding.origin_service||"미확인"}`),C.el("span","",`위험 점수: ${Number.isFinite(finding.risk_score)?finding.risk_score:"미확인"}`),C.el("span","",`신뢰도: ${Number.isFinite(finding.confidence)?finding.confidence:"미확인"}`),C.el("span","",responseLabel(finding.response_decision)));card.append(meta);
-      }
-    }else if(record.kind==="audit")card.append(C.el("p","record-summary",payload.action||payload.result||"에이전트 감사 기록"));
-    else card.append(C.el("p","record-summary",`${process.exe||"실행 파일 미확인"} · ${process.origin_service||"서비스 미확인"}`));
-    if(event.event_type){const meta=C.el("div","record-meta");meta.append(C.el("span","",`프로세스: ${process.exe||"미확인"}`),C.el("span","",`PID: ${process.pid??"미확인"}`),C.el("span","",`실행 시각: ${C.time(event.event_time)}`));card.append(meta);}
-    card.append(C.raw(record,"보존된 기록 원문 보기"));return card;
-  };
-  const pager = (id,state,reload) => {
-    const previous=C.button("이전",()=>{state.page--;reload(false);});previous.disabled=state.page===0;
-    const next=C.button("다음",()=>{state.cursors[state.page+1]=state.next;state.page++;reload(false);});next.disabled=!state.next;
-    C.id(id).replaceChildren(previous,C.el("span","",`${state.page+1}페이지 · ${state.items.length}개 수신`),next);
-  };
-  const renderHistory = () => {
-    const search=C.id("historySearch").value.trim().toLowerCase();
-    const items=history.items.filter(record=>!search||JSON.stringify(record).toLowerCase().includes(search));
-    C.id("historyRows").replaceChildren(...(items.length?items.map(recordCard):[C.empty(search?"현재 페이지에서 검색 조건에 맞는 기록이 없습니다.":"조건에 맞는 기록이 없습니다.")]));
-    C.text("historyScope",`중앙 보존 기록 · 수신 시각 역순 · 페이지당 최대 20개${search?` · 현재 페이지 검색 ${items.length}개`:""}. 기록 원문에서 탐지 근거와 실행 경로를 확인하세요.`);
-    pager("historyPager",history,C.loadHistory);
-  };
-  C.loadHistory = async (reset = false) => {
-    if(reset){history.page=0;history.cursors=[""];}
-    const generation=++history.generation;
-    const params=new URLSearchParams({limit:"20",agent_id:C.id("historyAgent").value,kind:C.id("historyKind").value});
-    if(history.cursors[history.page])params.set("before",history.cursors[history.page]);
-    C.id("historyRows").setAttribute("aria-busy","true");
-    try{const result=await C.request(`/api/history?${params}`,{page:true});if(generation!==history.generation)return;history.items=result.items;history.next=result.next;history.loaded=true;renderHistory();}
-    catch(error){if(generation===history.generation)C.error(error);}
-    finally{if(generation===history.generation)C.id("historyRows").setAttribute("aria-busy","false");}
-  };
-  const auditName = kind => ({"agent.enrolled":"에이전트 등록","agent.revoked":"에이전트 등록 해지","policy.assigned":"정책 지정","removal.authorized":"제거 승인 발급","group.saved":"서버 그룹 저장","group.deleted":"서버 그룹 삭제","template.saved":"정책 템플릿 저장","template.deleted":"정책 템플릿 삭제","policy.deployed":"정책 배포","enrollment.issued":"등록 토큰 발급"}[String(kind||"").replace(/^console\./,"")]||"중앙 관리 작업");
-  const renderAudit = () => {
-    const search=C.id("auditSearch").value.trim().toLowerCase(),items=audit.items.filter(item=>!search||`${JSON.stringify(item)} ${auditName(item.kind)}`.toLowerCase().includes(search));
-    C.id("auditRows").replaceChildren(...(items.length?items.map(item=>{
-      const details=C.object(item.details),target=item.agent_id||details.template_id||details.group_id||details.id||"중앙 관리";
-      const card=C.el("article","record"),head=C.el("div","record-head");head.append(C.el("span","record-title",auditName(item.kind)),C.el("time","",C.time(item.created_at)));card.append(head,C.el("p","record-summary",target));
-      const meta=C.el("div","record-meta");
-      for(const [label,key] of [["버전","version"],["템플릿 버전","template_version"],["정책 리비전","revision"],["대상 서버 수","target_count"],["그룹 서버 수","agent_count"]])if(details[key]!==undefined)meta.append(C.el("span","",`${label}: ${details[key]}`));
-      if(C.array(details.pending_features).includes("integrity"))meta.append(C.tag("무결성 적용 대기","pending"));
-      card.append(meta,C.raw(item,"감사 기록 상세 보기"));return card;
-    }):[C.empty(search?"현재 페이지에서 일치하는 작업이 없습니다.":"중앙 감사 기록이 없습니다.")]));pager("auditPager",audit,C.loadAudit);
-  };
-  C.loadAudit = async (reset = false) => {
-    if(reset){audit.page=0;audit.cursors=[""];}
-    const generation=++audit.generation,params=new URLSearchParams({limit:"20"});if(audit.cursors[audit.page])params.set("before",audit.cursors[audit.page]);
-    try{const result=await C.request(`/api/audit?${params}`,{page:true});if(generation!==audit.generation)return;audit.items=result.items;audit.next=result.next;audit.loaded=true;renderAudit();}catch(error){if(generation===audit.generation)C.error(error);}
   };
   C.populateRemoval = () => {
     const agent=C.state.agents.find(a=>a.agent_id===C.id("removalAgent").value&&!a.revoked);C.id("removalEnrollment").value=agent?agent.enrollment_id:"";
@@ -162,17 +105,12 @@
   };
   C.initOperations = () => {
     initGroups();initApprovals();
-    C.id("historyFilters").addEventListener("submit",event=>{event.preventDefault();C.loadHistory(true);});
-    C.id("historySearch").addEventListener("input",renderHistory);
-    C.id("refreshAudit").addEventListener("click",()=>C.run(C.id("refreshAudit"),()=>C.loadAudit(true)));
-    C.id("auditSearch").addEventListener("input",renderAudit);
     C.onState(()=>{
       const enrollment=C.object(C.state.enrollment),ready=enrollment.ready===true;
       C.text("enrollmentReadiness",ready?`중앙 연결 주소: ${enrollment.central_url}. 설치 토큰에 주소와 공개 CA 인증서가 함께 포함됩니다.`:"중앙 서버의 에이전트 접속 주소가 설정되지 않아 기존 방식 등록 토큰을 발급합니다. 중앙 주소와 CA 인증서는 별도로 전달하세요.");
       C.text("enrollmentSubmit",ready?"설치 토큰 발급":"기존 방식 등록 토큰 발급");
       if(!group.initialized){group.initialized=true;fillGroup(null);}else{renderGroupList();C.choices("groupMembers",memberOptions(),"member","등록된 에이전트가 없습니다.");}
       const agents=C.state.agents.filter(a=>!a.revoked).map(a=>[a.agent_id,`${a.agent_id}${a.hostname?` · ${a.hostname}`:""}`]);
-      C.options("historyAgent",C.state.agents.map(a=>[a.agent_id,a.agent_id]),"전체 에이전트");
       const prior=C.id("removalAgent").value,priorEnrollment=C.id("removalEnrollment").value;
       C.options("removalAgent",agents,"에이전트 선택");C.options("revokeAgent",agents,"에이전트 선택");
       const current=C.state.agents.find(a=>a.agent_id===C.id("removalAgent").value);

@@ -77,6 +77,10 @@ type consoleHistoryCursor struct {
 }
 
 func (s *Server) consoleHistory(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("view") != "" {
+		s.consoleHistoryView(w, r)
+		return
+	}
 	agentID, kind := r.URL.Query().Get("agent_id"), r.URL.Query().Get("kind")
 	limit := queryLimit(r)
 	if agentID != "" && !identifierPattern.MatchString(agentID) || kind != "" && kind != "event" && kind != "finding" && kind != "event_bundle" && kind != "audit" && kind != "detections" || limit < 1 || limit > 500 {
@@ -141,6 +145,11 @@ ORDER BY received_at_ns DESC,agent_id DESC,kind DESC,record_id DESC LIMIT ?`,
 }
 
 func (s *Server) consoleAudit(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	if query.Get("view") == "audit" || query.Has("from") || query.Has("until") || query.Has("agent_id") || query.Has("type") || query.Has("q") {
+		s.consoleFilteredAudit(w, r)
+		return
+	}
 	limit := queryLimit(r)
 	before := r.URL.Query().Get("before")
 	var cursor int64

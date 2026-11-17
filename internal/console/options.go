@@ -12,6 +12,9 @@ import (
 // Options declares a fixed public origin and the actual TCP peers allowed to
 // present it. Forwarded, X-Forwarded-* and Cloudflare headers are never trusted.
 type Options struct {
+	// AccountsPath enables durable accounts. Empty keeps isolated in-memory
+	// compatibility for embedded callers; the serving command always supplies it.
+	AccountsPath   string
 	PublicOrigin   string
 	TrustedProxies []string
 }

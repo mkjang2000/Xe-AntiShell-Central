@@ -15,7 +15,8 @@
     policies:["보안 정책","POLICY CONTROL","정책을 저장하고 배포 대상을 미리 확인한 후 적용합니다."],
     history:["탐지·실행 이력","DETECTION & HISTORY","중앙에 전달된 탐지 근거와 실행 기록을 검토합니다."],
     approvals:["등록·제거 승인","ENROLLMENT & APPROVALS","단일 서버 설치 토큰과 일회용 제거 승인을 발급합니다."],
-    audit:["감사 기록","OPERATOR AUDIT","정책 변경과 등록·승인 등 중앙 관리 작업을 확인합니다."]
+    audit:["감사 기록","OPERATOR AUDIT","기간별 중앙 관리 작업과 에이전트 감사 기록을 확인합니다."],
+    accounts:["계정 관리","ACCOUNT MANAGEMENT","콘솔 계정과 권한을 관리하고 본인 비밀번호를 변경합니다."]
   };
   let refreshing = null, recentGeneration = 0, started = false;
   let confirmResolve = null, confirmMatch = "", secret = null;
@@ -59,7 +60,7 @@
     C.text("pageTitle",title);C.text("pageEyebrow",eyebrow);C.text("pageDescription",description);document.title=`${title} · Xe-AntiShell Central`;
     for(const key of Object.keys(pages))C.id(`view-${key}`).hidden=key!==view;
     for(const link of C.id("navigation").querySelectorAll("[data-view]")){if(link.dataset.view===view)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");}
-    if(started&&view==="history")C.loadHistory(true);if(started&&view==="audit")C.loadAudit(true);
+    if(started&&view==="history")C.loadHistory(true);if(started&&view==="audit")C.loadAudit(true);if(started&&view==="accounts")C.loadAccounts();
   };
   C.navigate=navigate;
   const recent = async () => {
@@ -71,7 +72,7 @@
     if(refreshing)return refreshing;
     refreshing=(async()=>{
       try{
-        const state=await C.request("/api/state");C.updateState(state);
+        const state=await C.request("/api/state");C.updateState(state);C.applyAccess();
         C.text("lastUpdated",`${C.time(state.server_time||new Date().toISOString())} 갱신`);C.text("connectionState","중앙 연결됨");C.id("connectionState").className="connection connected";
         if(state.agents_truncated)C.error(`등록된 ${C.number(state.total_agents)}대 중 최대 1,000대만 표시합니다. 검색·집계·선택은 표시된 서버를 기준으로 합니다.`);
         await recent();
@@ -79,7 +80,7 @@
       finally{refreshing=null;}
     })();return refreshing;
   };
-  C.id("refreshButton").addEventListener("click",()=>C.run(C.id("refreshButton"),async()=>{await C.refresh();if(C.view==="history")await C.loadHistory(true);if(C.view==="audit")await C.loadAudit(true);}));
+  C.id("refreshButton").addEventListener("click",()=>C.run(C.id("refreshButton"),async()=>{await C.refresh();if(C.view==="history")await C.loadHistory(true);if(C.view==="audit")await C.loadAudit(true);if(C.view==="accounts")await C.loadAccounts();}));
   C.id("logoutButton").addEventListener("click",()=>C.run(C.id("logoutButton"),async()=>{
     if((C.hasUnsavedPolicy()||C.hasUnsavedGroup())&&!await C.confirm({title:"로그아웃 확인",description:"저장하지 않은 편집 내용이 있습니다. 로그아웃하면 편집 내용과 발급 결과가 사라집니다.",accept:"로그아웃"}))return;
     await C.request("/logout",{method:"POST"});clearSecret();location.assign("/login");
@@ -87,9 +88,9 @@
   globalThis.addEventListener("pagehide",clearSecret);
   globalThis.addEventListener("hashchange",navigate);
   globalThis.addEventListener("beforeunload",event=>{if(C.hasUnsavedPolicy()||C.hasUnsavedGroup()){event.preventDefault();event.returnValue="";}});
-  C.initFleet();C.initOperations();C.initPolicy();navigate();
+  C.initFleet();C.initOperations();C.initHistory();C.initPolicy();C.initAccounts();navigate();
   (async()=>{
-    try{C.session=await C.request("/api/session");C.text("sessionUser",C.session.username);started=true;await C.refresh();navigate();}
+    try{C.session=await C.request("/api/session");C.text("sessionUser",C.session.username);C.applyAccess();started=true;await C.refresh();navigate();}
     catch(error){C.error(error);}
     setInterval(()=>{if(started&&!document.hidden)C.refresh();},15000);
     document.addEventListener("visibilitychange",()=>{if(started&&!document.hidden)C.refresh();});

@@ -5,14 +5,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#eef2f6">
   <title>로그인 · Xe-AntiShell Central</title>
+  <script src="/assets/theme.js"></script>
   <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/theme.css">
   <script src="/assets/app.js" defer></script>
 </head>
 <body class="login-page" data-page="login">
+  <div class="login-theme"><button class="quiet theme-toggle" data-theme-toggle type="button" aria-pressed="true">라이트 모드</button></div>
   <main class="login-shell">
-    <section class="login-brand"><span class="brand-mark large" aria-hidden="true"><i></i><b>XE</b></span><p class="eyebrow">XE-ANTISHELL / CENTRAL</p><h1>중앙 보안 운영,<br>한곳에서 명확하게.</h1><p>에이전트 상태부터 보안 정책과 승인까지<br>서버 운영에 필요한 정보를 확인하세요.</p><div class="login-rule"></div><span class="login-subline">FLEET MONITORING &amp; POLICY CONTROL</span></section>
-    <section class="login-card" aria-labelledby="loginTitle"><p class="eyebrow">OPERATOR ACCESS</p><h2 id="loginTitle">관리자 로그인</h2><p class="muted">중앙 콘솔 운영자 계정으로 로그인하세요.</p><div id="loginError" class="notice error" role="alert" hidden></div><form method="post" action="/login" id="loginForm"><div class="field"><label for="username">사용자 이름</label><input id="username" name="username" type="text" autocomplete="username" maxlength="128" required autofocus></div><div class="field"><label for="password">비밀번호</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></div><button class="primary login-submit" type="submit">콘솔에 로그인 <span aria-hidden="true">→</span></button></form><p class="login-help">계정은 중앙 서버의 콘솔 관리자 설정에서 관리합니다.</p></section>
+    <section class="login-brand"><span class="brand-mark large" aria-hidden="true">XE</span><p class="eyebrow">XE-ANTISHELL / CENTRAL</p><h1>중앙 보안 운영,<br>한곳에서 명확하게.</h1><p>에이전트 상태부터 보안 정책과 승인까지<br>서버 운영에 필요한 정보를 확인하세요.</p><div class="login-rule"></div><span class="login-subline">FLEET MONITORING &amp; POLICY CONTROL</span></section>
+    <section class="login-card" aria-labelledby="loginTitle"><p class="eyebrow">OPERATOR ACCESS</p><h2 id="loginTitle">중앙 콘솔 로그인</h2><p class="muted">중앙 콘솔 운영자 계정으로 로그인하세요.</p><div id="loginError" class="notice error" role="alert" hidden></div><form method="post" action="/login" id="loginForm"><div class="field"><label for="username">사용자 이름</label><input id="username" name="username" type="text" autocomplete="username" maxlength="128" required autofocus></div><div class="field"><label for="password">비밀번호</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></div><button class="primary login-submit" type="submit">콘솔에 로그인 <span aria-hidden="true">→</span></button></form><p class="login-help">계정은 중앙 서버의 콘솔 관리자 설정에서 관리합니다.</p></section>
   </main>
-  <footer class="login-footer">Xe-AntiShell Central <span>관리자 전용 · 인증된 운영 세션</span></footer>
+  <footer class="login-footer">Xe-AntiShell Central <span>권한별 접근 · 인증된 운영 세션</span></footer>
 </body>
 </html>

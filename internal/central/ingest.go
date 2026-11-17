@@ -157,7 +157,12 @@ func (s *Store) Heartbeat(ctx context.Context, agentID string, heartbeat managed
 	if len(body) > managed.MaxHeartbeatBytes {
 		return fmt.Errorf("%w: heartbeat too large", ErrInvalid)
 	}
-	result, err := s.db.ExecContext(ctx, "UPDATE agents SET hostname=?,heartbeat_json=?,last_seen_at_ns=? WHERE agent_id=? AND enrollment_id=? AND revoked=0", heartbeat.Hostname, body, now.UnixNano(), agentID, heartbeat.EnrollmentID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, "UPDATE agents SET hostname=?,heartbeat_json=?,last_seen_at_ns=? WHERE agent_id=? AND enrollment_id=? AND revoked=0", heartbeat.Hostname, body, now.UnixNano(), agentID, heartbeat.EnrollmentID)
 	if err != nil {
 		return err
 	}
@@ -168,7 +173,10 @@ func (s *Store) Heartbeat(ctx context.Context, agentID string, heartbeat managed
 	if count != 1 {
 		return ErrUnauthorized
 	}
-	return nil
+	if err = recordHeartbeatErrors(ctx, tx, agentID, heartbeat, now, false); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 type HistoryRecord struct {

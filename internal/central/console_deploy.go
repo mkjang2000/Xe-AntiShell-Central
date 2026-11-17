@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
-	"github.com/mkjang2000/Xe-AntiShell/protocol/model"
 )
 
 const previewDomain = "xe-antishell-central/console-deploy/v1\x00"
@@ -161,19 +160,35 @@ func consolePolicyWarnings(settings ConsoleSettings, body []byte, now time.Time)
 		warnings = append(warnings, "인증된 기능 보고가 없어 대응 기능 지원 여부를 알 수 없습니다")
 	} else {
 		report := heartbeat.Status.CapabilityReport
-		if report.ProbedAt.IsZero() || report.ProbedAt.Before(now.Add(-5*time.Minute)) || report.ProbedAt.After(now.Add(time.Minute)) {
-			warnings = append(warnings, "기능 보고가 오래되었거나 시각이 올바르지 않아 현재 지원 여부를 알 수 없습니다")
-		} else {
-			for _, name := range settings.Response.RequiredCapabilities {
-				capability, ok := report.Capabilities[name]
-				if !ok || capability.State != model.CapabilitySupported {
-					warnings = append(warnings, "필수 기능의 지원이 확인되지 않았습니다: "+name)
-				}
-				if ok && name == "response.terminate" && capability.RuntimeState == "available" {
-					warnings = append(warnings, "프로세스 종료 기능은 사용 가능하지만 에이전트 로컬 opt-in이 비활성화되어 있습니다")
-				} else if ok && capability.RuntimeState != "active" {
-					warnings = append(warnings, "필수 기능의 실제 동작이 확인되지 않았습니다: "+name)
-				}
+		// ProbedAt describes passive discovery, which may predate a current
+		// heartbeat by days. Delivery freshness is a separate operator warning.
+		if heartbeat.SentAt.IsZero() || heartbeat.SentAt.Before(now.Add(-5*time.Minute)) || heartbeat.SentAt.After(now.Add(time.Minute)) {
+			warnings = append(warnings, "하트비트가 오래되었거나 시각이 올바르지 않아 현재 대응 가능 여부를 다시 확인해야 합니다")
+		}
+		required := append([]string(nil), settings.Response.RequiredCapabilities...)
+		if settings.Response.Mode == "enforce" {
+			required = append(required, "observation.process_exec", "observation.process_lineage", "response.terminate")
+			if heartbeat.Status.Collector != "tetragon-json" {
+				warnings = append(warnings, "현재 자동 종료는 Tetragon 실행 이벤트에서만 지원합니다. 대상 서버의 수집기를 확인하세요")
+			}
+		}
+		seen := make(map[string]bool, len(required))
+		for _, name := range required {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			capability, ok := report.Capabilities[name]
+			// Match the agent's response gate: passive State and the age of a
+			// non-nil VerifiedAt are not part of this predicate. The agent still
+			// checks policy, event identity and local opt-in before any action.
+			if ok && capability.Implementation == "implemented" && capability.RuntimeState == "active" && capability.VerifiedAt != nil {
+				continue
+			}
+			if ok && name == "response.terminate" && capability.RuntimeState == "available" {
+				warnings = append(warnings, "프로세스 종료 기능은 사용 가능하지만 에이전트 로컬 opt-in이 비활성화되어 있습니다")
+			} else {
+				warnings = append(warnings, "필수 기능의 실제 동작 검증이 확인되지 않았습니다: "+name)
 			}
 		}
 	}
