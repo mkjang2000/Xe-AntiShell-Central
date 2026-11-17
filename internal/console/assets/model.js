@@ -237,7 +237,9 @@
       if (response.status !== 204) { try { body = await response.json(); } catch (_) { if (response.ok) throw new Error("서버 응답 형식을 확인할 수 없습니다."); } }
       if (!response.ok) {
         const messages = {400: "입력값을 확인하세요.",403: "이 작업에 대한 권한 또는 요청 인증을 확인하세요.",404: "대상을 찾을 수 없습니다. 목록을 갱신하세요.",409: "편집 또는 배포 대상이 변경되었습니다. 최신 상태를 불러온 뒤 다시 확인하세요.",429: "요청이 많습니다. 잠시 후 다시 시도하세요."};
-        throw new Error(C.object(body).error || messages[response.status] || "서버 요청을 처리하지 못했습니다.");
+        const error = new Error(C.object(body).error || messages[response.status] || "서버 요청을 처리하지 못했습니다.");
+        error.status = response.status;
+        throw error;
       }
       return options.page ? {items: C.array(body), next: response.headers.get("X-Next-Cursor") || ""} : body;
     } catch (error) {

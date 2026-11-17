@@ -26,7 +26,10 @@ Xe-AntiShell-Central/
 │   ├── accounts_store.go         # Persistent accounts, final-admin guard and account audit
 │   ├── accounts_auth.go          # Per-request identity and role authorization
 │   ├── accounts_http.go          # Account/password administration APIs
-│   └── assets/                    # Korean fleet, policies, histories, accounts and dark/light themes
+│   └── assets/                    # Korean fleet, policies, histories and dark/light themes
+│       ├── accounts.js           # Compact account list, dialogs and permission help
+│       ├── accounts.css          # Account table/dialog/tooltip responsive presentation
+│       └── accounts.test.mjs     # Dialog lifecycle, stale responses and role-help regressions
 ├── packaging/
 │   ├── rpm/xe-antishell-central.spec
 │   ├── systemd/sentinel-central.service

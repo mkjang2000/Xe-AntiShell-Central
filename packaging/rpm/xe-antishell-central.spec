@@ -1,6 +1,6 @@
 Name:           xe-antishell-central
 Version:        0.1.0
-Release:        8%{?dist}
+Release:        9%{?dist}
 Summary:        Independent Xe-AntiShell central management service
 License:        MIT AND Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND BSD-1-Clause AND SunPro
 URL:            https://github.com/mkjang2000/Xe-AntiShell-Central
@@ -51,6 +51,10 @@ getent passwd xe-antishell-central >/dev/null || useradd -r -g xe-antishell-cent
 %systemd_postun_with_restart sentinel-central.service
 
 %changelog
+* Tue Nov 17 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-9
+- Present accounts in a compact searchable list with focused editing dialogs
+- Explain permissions with hover, keyboard and touch help
+
 * Tue Nov 17 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-8
 - Skip absent and null findings in projected detection history
 - Index retained detection bundles for bounded history lookup

@@ -121,7 +121,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/assets/"):
 		name := strings.TrimPrefix(r.URL.Path, "/assets/")
 		switch name {
-		case "app.css", "app.js", "model.js", "fleet.js", "policy.js", "operations.js", "accounts.js", "access.js", "theme.js", "theme.css", "history.js", "capability-editor.js":
+		case "app.css", "app.js", "model.js", "fleet.js", "policy.js", "operations.js", "accounts.js", "accounts.css", "access.js", "theme.js", "theme.css", "history.js", "capability-editor.js":
 		default:
 			http.NotFound(w, r)
 			return
