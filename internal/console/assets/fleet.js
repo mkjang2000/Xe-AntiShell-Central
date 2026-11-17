@@ -109,7 +109,8 @@
       const identity = C.el("div"); identity.append(C.el("strong", "", presentation.title));
       const impl = C.tag(presentation.implementation, presentation.implementation === "개발 예정" ? "pending" : "neutral");
       const support = {supported:"지원 조건 확인",limited:"일부 조건 미확인",unsupported:"지원 안 함",error:"진단 오류"};
-      const note = C.el("div", "", presentation.note); note.append(C.el("span", "capability-code", `${support[item.state] || "지원 여부 미확인"} · 확인: ${C.time(item.verified_at || report.probed_at)}`));
+      const note = C.el("div", "", presentation.note); note.append(C.el("span", "capability-code", `사전 환경 진단: ${support[item.state] || "지원 여부 미확인"} · 진단 시각: ${C.time(report.probed_at)}`));
+      if (item.verified_at) note.append(C.el("span", "capability-code", `실동작 확인: ${C.time(item.verified_at)}`));
       return [identity, impl, C.tag(presentation.label, presentation.tone), note];
     });
     const table = C.table("기능 구현과 보고된 실동작", ["기능", "구현 구분", "실동작 / 적용", "확인 근거"], buildRows(entries.filter(([,item])=>C.object(item).implementation!=="planned"))); table.classList.add("capabilities-table");

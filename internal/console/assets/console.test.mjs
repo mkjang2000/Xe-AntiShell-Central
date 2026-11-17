@@ -54,6 +54,45 @@ test("planned, diagnostic and stale capability evidence stay distinct",()=>{
   assert.equal(active.tone,"good");assert.doesNotMatch(active.note,/INTERNAL|script/);
 });
 
+test("live collection evidence takes precedence over contradictory passive diagnostics",()=>{
+  const {C}=model();
+  for(const name of ["collector.tetragon","collector.audit","observation.process_exec","observation.process_lineage"]){
+    for(const state of ["unsupported","error"]){
+      const item={state,implementation:"implemented",runtime_state:"active",reason:"INTERNAL PROBE <script>",runtime_reason:"INTERNAL RUNTIME <script>"},before=structuredClone(item);
+      const active=C.capability(name,item,true);
+      assert.equal(active.label,"수집 동작 보고");assert.equal(active.tone,"good");
+      assert.match(active.note,/사전 환경 진단.*실제 수집 보고.*일치하지 않습니다/);
+      assert.doesNotMatch(active.note,/INTERNAL|script/);assert.deepEqual(item,before);
+    }
+  }
+});
+
+test("collection precedence preserves runtime errors, freshness and implementation boundaries",()=>{
+  const {C}=model(),active={state:"unsupported",implementation:"implemented",runtime_state:"active"};
+  const failed=C.capability("collector.tetragon",{...active,runtime_state:"error"},true);
+  assert.equal(failed.label,"확인 오류");assert.equal(failed.tone,"danger");
+  assert.equal(C.capability("collector.tetragon",active,false).label,"최신 상태 미확인");
+  assert.equal(C.capability("observation.file",{...active,implementation:"planned"},true).label,"미제공");
+  assert.equal(C.capability("collector.tetragon",{...active,implementation:undefined},true).label,"지원 안 함");
+  assert.equal(C.capability("collector.unknown",active,true).label,"미확인");
+  assert.equal(C.capability("integrity.tpm",active,true).label,"검증 미제공");
+});
+
+test("passive response restrictions cannot become active collection or automatic enforcement",()=>{
+  const {C}=model();
+  for(const [state,label] of [["unsupported","지원 안 함"],["error","확인 오류"]]){
+    const response=C.capability("response.terminate",{state,implementation:"implemented",runtime_state:"active"},true);
+    assert.equal(response.label,label);assert.notEqual(response.tone,"good");assert.notEqual(response.tone,"blue");
+  }
+});
+
+test("active eBPF diagnosis describes only the observed process execution hooks",()=>{
+  const {C}=model();
+  const ebpf=C.capability("kernel.ebpf",{state:"limited",implementation:"implemented",runtime_state:"active"},true);
+  assert.equal(ebpf.label,"동작 진단 확인");assert.equal(ebpf.implementation,"환경 진단");
+  assert.match(ebpf.note,/프로세스 eBPF 후크/);assert.match(ebpf.note,/그 밖의 eBPF 기능은 별도 검증/);
+});
+
 test("missing metrics remain unknown while observed zero remains zero",()=>{
   const {C}=model();
   assert.equal(C.percent(null),"미확인");assert.equal(C.bytes(undefined),"미확인");assert.equal(C.rate(null),"미확인");
@@ -112,7 +151,7 @@ test("history preserves opaque server cursor for real paging",async()=>{
 });
 
 class FakeNode {
-  constructor(tag,document){this.tagName=tag;this.document=document;this.children=[];this.textContent="";this.value="";this.checked=false;this.type="";this.handlers={};}
+  constructor(tag,document){this.tagName=tag;this.document=document;this.children=[];this.textContent="";this.value="";this.checked=false;this.type="";this.handlers={};this.classList={add(){}};}
   set innerHTML(_){throw new Error("untrusted HTML insertion");}
   append(...nodes){for(const node of nodes){if(node.tagName==="fragment")this.children.push(...node.children);else this.children.push(node);}}
   replaceChildren(...nodes){this.children=[];this.append(...nodes);}
@@ -139,6 +178,21 @@ function appHarness(extra={}) {
   vm.runInContext(source("app.js"),context);
   return {C,context,document,events};
 }
+test("fleet shows live collection separately from passive diagnosis and preserves raw evidence",()=>{
+  const {C,context}=appHarness();
+  vm.runInContext(source("fleet.js"),context);
+  const report={probed_at:"2026-11-17T02:59:00Z",capabilities:{"collector.tetragon":{state:"unsupported",implementation:"implemented",runtime_state:"active",verified_at:"2026-11-17T02:59:55Z",reason:"neither tetragon nor tetra executable was found"}}};
+  C.state.agents=[agent({heartbeat:{sent_at:"2026-11-17T02:59:50Z",status:{collector:"tetragon-json",health:"healthy",capability_report:report}}})];
+  C.selectedAgent="web-01";C.renderAgentDetail(false);
+  const text=node=>typeof node==="string"?node:node.textContent+node.children.map(text).join("");
+  const nodes=C.id("agentDetailBody").querySelectorAll("*"),row=nodes.find(node=>node.tagName==="tr"&&text(node).includes("실시간 실행 수집기"));
+  assert.equal(row.children[2].children[0].textContent,"수집 동작 보고");
+  assert.match(text(row.children[3]),/사전 환경 진단: 지원 안 함/);
+  assert.match(text(row.children[3]),new RegExp(`진단 시각: ${C.time(report.probed_at)}`));
+  assert.match(text(row.children[3]),new RegExp(`실동작 확인: ${C.time(report.capabilities["collector.tetragon"].verified_at)}`));
+  const raw=nodes.find(node=>node.tagName==="details"&&node.children[0].textContent==="기술 보고 원문 보기");
+  assert.notEqual(raw.open,true);assert.deepEqual(JSON.parse(raw.children[1].textContent),report);
+});
 test("closing issuance dialog clears secret synchronously before native close event",()=>{
   const document={nodes:{},body:{dataset:{page:"console"}},activeElement:null,title:"",createElement(tag){return new FakeNode(tag,this);}};
   document.getElementById=id=>document.nodes[id]||(document.nodes[id]=Object.assign(new FakeNode("div",document),{id}));

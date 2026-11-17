@@ -94,11 +94,18 @@
     if (diagnostic) result.implementation = "환경 진단";
     if (!fresh) return {...result, label: "최신 상태 미확인", tone: "warning", note: "기능 보고가 없거나 오래되었습니다. 이전 보고 원문만 참고하세요."};
     if (name.startsWith("integrity.")) return {...result, label: "검증 미제공", tone: "pending", note: "장치·측정 정보의 진단 항목입니다. 에이전트 무결성 검증은 현재 제공하지 않습니다."};
-    if (item.runtime_state === "error" || item.state === "error") return {...result, label: "확인 오류", tone: "danger", note: "기능 실행 또는 환경 확인에서 오류가 보고되었습니다. 서버 설정과 수집기 로그를 확인하세요."};
+    if (item.runtime_state === "error") return {...result, label: "확인 오류", tone: "danger", note: "기능 실행에서 오류가 보고되었습니다. 서버 설정과 수집기 로그를 확인하세요."};
+    const activeNote = name === "observation.process_lineage" ? "프로그램이 어느 서비스에서 실행되었는지 추적합니다. 일부 상위 프로세스 정보는 누락될 수 있습니다." : "에이전트에서 실행 정보를 수신하고 있습니다. 보존 이력은 탐지와 관련된 기록을 중심으로 표시합니다.";
+    if (item.implementation === "implemented" && item.runtime_state === "active" && (name.startsWith("collector.") || name.startsWith("observation."))) {
+      const mismatch = ["unsupported", "error"].includes(item.state) ? " 사전 환경 진단은 실제 수집 보고와 일치하지 않습니다. 기술 보고 원문을 확인하세요." : "";
+      return {...result, label: "수집 동작 보고", tone: "good", note: activeNote + mismatch};
+    }
+    if (item.state === "error") return {...result, label: "확인 오류", tone: "danger", note: "환경 확인에서 오류가 보고되었습니다. 서버 설정과 수집기 로그를 확인하세요."};
     if (item.state === "unsupported") return {...result, label: "지원 안 함", tone: "neutral", note: "현재 서버 환경에서 이 기능의 지원 조건을 충족하지 못했습니다."};
     if (diagnostic) {
       const label = item.runtime_state === "active" ? "동작 진단 확인" : item.state === "supported" ? "환경 조건 확인" : "일부 조건 미확인";
-      return {...result, label, tone: item.runtime_state === "active" ? "good" : "neutral", note: "수집·대응에 필요한 서버 환경의 진단 결과입니다. 실제 수집 여부는 해당 수집 기능의 실동작 보고에서 확인하세요."};
+      const note = name === "kernel.ebpf" && item.runtime_state === "active" ? "Tetragon 실행 이벤트로 프로세스 eBPF 후크 동작을 확인했습니다. 확인 범위는 프로세스 실행 후크이며, 그 밖의 eBPF 기능은 별도 검증이 필요합니다." : "수집·대응에 필요한 서버 환경의 진단 결과입니다. 실제 수집 여부는 해당 수집 기능의 실동작 보고에서 확인하세요.";
+      return {...result, label, tone: item.runtime_state === "active" ? "good" : "neutral", note};
     }
     if (item.implementation !== "implemented") return result;
     if (name === "response.terminate") {
@@ -106,7 +113,7 @@
       if (["available", "inactive"].includes(item.runtime_state)) return {...result, label: "자동 종료 꺼짐", note: "로컬 종료 허용 설정을 확인하세요. 중앙 정책만으로 자동 종료가 활성화되지 않습니다."};
     }
     const states = {
-      active:["수집 동작 보고","good",name === "observation.process_lineage" ? "프로그램이 어느 서비스에서 실행되었는지 추적합니다. 일부 상위 프로세스 정보는 누락될 수 있습니다." : "에이전트에서 실행 정보를 수신하고 있습니다. 보존 이력은 탐지와 관련된 기록을 중심으로 표시합니다."],
+      active:["수집 동작 보고","good",activeNote],
       available:["사용 가능 · 미동작","neutral","서버 지원 조건은 확인했지만 실제 기능 동작은 아직 보고되지 않았습니다."],
       inactive:["사용 안 함","neutral","현재 이 기능을 사용하지 않습니다. 다른 수집기 사용 여부와 서버 설정을 확인하세요."],
       unverified:["동작 미확인","warning","실제 정보 수신을 확인하지 못했습니다. 에이전트 수집기 연결 상태를 확인하세요."]
