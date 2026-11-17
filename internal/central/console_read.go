@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 )
@@ -81,10 +80,12 @@ func (s *Server) consoleHistory(w http.ResponseWriter, r *http.Request) {
 		s.consoleHistoryView(w, r)
 		return
 	}
+	r, cancel := historyRequest(r)
+	defer cancel()
 	agentID, kind := r.URL.Query().Get("agent_id"), r.URL.Query().Get("kind")
 	limit := queryLimit(r)
 	if agentID != "" && !identifierPattern.MatchString(agentID) || kind != "" && kind != "event" && kind != "finding" && kind != "event_bundle" && kind != "audit" && kind != "detections" || limit < 1 || limit > 500 {
-		s.consoleError(w, "history filter", fmt.Errorf("%w: 이력 조회 조건과 개수(1~500)를 확인하세요", ErrInvalid))
+		s.historyError(w, r, "history filter", fmt.Errorf("%w: 이력 조회 조건과 개수(1~500)를 확인하세요", ErrInvalid))
 		return
 	}
 	before := r.URL.Query().Get("before")
@@ -92,51 +93,26 @@ func (s *Server) consoleHistory(w http.ResponseWriter, r *http.Request) {
 	if before != "" {
 		body, err := base64.RawURLEncoding.DecodeString(before)
 		if len(before) > 2048 || err != nil || managed.DecodeStrict(body, 1536, &cursor) != nil || cursor.FilterAgent != agentID || cursor.FilterKind != kind || cursor.AgentID == "" || cursor.ID == "" {
-			s.consoleError(w, "history cursor", fmt.Errorf("%w: 이력 페이지 정보가 잘못되었습니다", ErrInvalid))
+			s.historyError(w, r, "history cursor", fmt.Errorf("%w: 이력 페이지 정보가 잘못되었습니다", ErrInvalid))
 			return
 		}
 	}
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT agent_id,kind,record_id,received_at_ns,payload FROM records
-WHERE (?='' OR agent_id=?) AND (?='' OR kind=? OR (?='detections' AND (kind='finding' OR (kind='event_bundle' AND json_array_length(payload,'$.findings')>0))))
-AND (?='' OR (received_at_ns,agent_id,kind,record_id)<(?,?,?,?))
-ORDER BY received_at_ns DESC,agent_id DESC,kind DESC,record_id DESC LIMIT ?`,
-		agentID, agentID, kind, kind, kind, before, cursor.At, cursor.AgentID, cursor.Kind, cursor.ID, limit+1)
+	query, args := buildLegacyHistoryQuery(agentID, kind, cursor, limit)
+	page, hasMore, err := s.store.readHistoryPage(r.Context(), query, args, limit, historyResponseBytes, false)
 	if err != nil {
-		s.consoleError(w, "history query", err)
+		s.historyError(w, r, "history read", err)
 		return
 	}
-	defer rows.Close()
 	items := []HistoryRecord{}
 	var next consoleHistoryCursor
-	hasMore := false
-	for rows.Next() {
-		var item HistoryRecord
-		var payload []byte
-		var at int64
-		if err = rows.Scan(&item.AgentID, &item.Kind, &item.ID, &at, &payload); err != nil {
-			break
-		}
-		if len(items) == limit {
-			hasMore = true
-			break
-		}
-		item.ReceivedAt = time.Unix(0, at).UTC()
-		item.Payload = payload
-		items = append(items, item)
-		next = consoleHistoryCursor{At: at, AgentID: item.AgentID, Kind: item.Kind, ID: item.ID, FilterAgent: agentID, FilterKind: kind}
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	_ = rows.Close()
-	if err != nil {
-		s.consoleError(w, "history rows", err)
-		return
+	for _, row := range page {
+		items = append(items, row.record)
+		next = consoleHistoryCursor{At: row.at, AgentID: row.record.AgentID, Kind: row.source, ID: row.record.ID, FilterAgent: agentID, FilterKind: kind}
 	}
 	if hasMore {
 		body, err := json.Marshal(next)
 		if err != nil {
-			s.consoleError(w, "history cursor encoding", err)
+			s.historyError(w, r, "history cursor encoding", err)
 			return
 		}
 		w.Header().Set("X-Next-Cursor", base64.RawURLEncoding.EncodeToString(body))
@@ -150,6 +126,8 @@ func (s *Server) consoleAudit(w http.ResponseWriter, r *http.Request) {
 		s.consoleFilteredAudit(w, r)
 		return
 	}
+	r, cancel := historyRequest(r)
+	defer cancel()
 	limit := queryLimit(r)
 	before := r.URL.Query().Get("before")
 	var cursor int64
@@ -158,39 +136,25 @@ func (s *Server) consoleAudit(w http.ResponseWriter, r *http.Request) {
 		cursor, err = strconv.ParseInt(before, 10, 64)
 	}
 	if err != nil || before != "" && cursor < 1 || limit < 1 || limit > 500 {
-		s.consoleError(w, "audit cursor", fmt.Errorf("%w: 감사 이력 페이지 정보와 개수(1~500)를 확인하세요", ErrInvalid))
+		s.historyError(w, r, "audit cursor", fmt.Errorf("%w: 감사 이력 페이지 정보와 개수(1~500)를 확인하세요", ErrInvalid))
 		return
 	}
-	rows, err := s.store.db.QueryContext(r.Context(), "SELECT audit_id,agent_id,kind,created_at_ns,details_json FROM audit WHERE (?='' OR audit_id<?) ORDER BY audit_id DESC LIMIT ?", before, cursor, limit+1)
+	statement := "SELECT audit_id,agent_id,kind,created_at_ns FROM audit"
+	args := []any{}
+	if before != "" {
+		statement += " WHERE audit_id<?"
+		args = append(args, cursor)
+	}
+	statement += " ORDER BY audit_id DESC LIMIT ?"
+	args = append(args, limit+1)
+	page, hasMore, err := s.store.readAuditPage(r.Context(), statement, args, limit, historyResponseBytes)
 	if err != nil {
-		s.consoleError(w, "audit query", err)
+		s.historyError(w, r, "audit read", err)
 		return
 	}
-	defer rows.Close()
 	items := []AuditEntry{}
-	hasMore := false
-	for rows.Next() {
-		var item AuditEntry
-		var details []byte
-		var at int64
-		if err = rows.Scan(&item.ID, &item.AgentID, &item.Kind, &at, &details); err != nil {
-			break
-		}
-		if len(items) == limit {
-			hasMore = true
-			break
-		}
-		item.CreatedAt = time.Unix(0, at).UTC()
-		item.Details = details
-		items = append(items, item)
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	_ = rows.Close()
-	if err != nil {
-		s.consoleError(w, "audit rows", err)
-		return
+	for _, row := range page {
+		items = append(items, row.record)
 	}
 	if hasMore {
 		w.Header().Set("X-Next-Cursor", strconv.FormatInt(items[len(items)-1].ID, 10))

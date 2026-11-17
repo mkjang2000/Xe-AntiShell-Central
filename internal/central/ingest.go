@@ -200,50 +200,6 @@ type AuditEntry struct {
 	Details   json.RawMessage `json:"details"`
 }
 
-func (s *Store) History(ctx context.Context, agentID, kind string, limit int) ([]HistoryRecord, error) {
-	if limit < 1 || limit > 500 {
-		return nil, fmt.Errorf("%w: history limit must be 1..500", ErrInvalid)
-	}
-	rows, err := s.db.QueryContext(ctx, "SELECT agent_id,kind,record_id,received_at_ns,payload FROM records WHERE (?='' OR agent_id=?) AND (?='' OR kind=?) ORDER BY received_at_ns DESC,record_id LIMIT ?", agentID, agentID, kind, kind, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := make([]HistoryRecord, 0)
-	for rows.Next() {
-		var item HistoryRecord
-		var at int64
-		if err = rows.Scan(&item.AgentID, &item.Kind, &item.ID, &at, &item.Payload); err != nil {
-			return nil, err
-		}
-		item.ReceivedAt = time.Unix(0, at).UTC()
-		items = append(items, item)
-	}
-	return items, rows.Err()
-}
-
-func (s *Store) Audit(ctx context.Context, limit int) ([]AuditEntry, error) {
-	if limit < 1 || limit > 500 {
-		return nil, fmt.Errorf("%w: audit limit must be 1..500", ErrInvalid)
-	}
-	rows, err := s.db.QueryContext(ctx, "SELECT audit_id,agent_id,kind,created_at_ns,details_json FROM audit ORDER BY audit_id DESC LIMIT ?", limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := make([]AuditEntry, 0)
-	for rows.Next() {
-		var item AuditEntry
-		var at int64
-		if err = rows.Scan(&item.ID, &item.AgentID, &item.Kind, &at, &item.Details); err != nil {
-			return nil, err
-		}
-		item.CreatedAt = time.Unix(0, at).UTC()
-		items = append(items, item)
-	}
-	return items, rows.Err()
-}
-
 func (s *Store) CurrentEnrollment(ctx context.Context, agentID string) (string, error) {
 	var value string
 	err := s.db.QueryRowContext(ctx, "SELECT enrollment_id FROM agents WHERE agent_id=? AND revoked=0", agentID).Scan(&value)

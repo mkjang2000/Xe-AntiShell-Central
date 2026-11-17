@@ -3,7 +3,6 @@ package central
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -144,8 +143,9 @@ func TestConsoleDetectionHistorySkipsNullFindings(t *testing.T) {
 
 func TestConsoleDetectionHistoryUsesFindingBundleIndex(t *testing.T) {
 	f := setup(t)
-	query := "EXPLAIN QUERY PLAN " + fmt.Sprintf(historyPageQuery, detectionHistoryProjection)
-	rows, err := f.store.db.Query(query, "", "", 0, 0, 0, 0, "", "$.rule_id", "", "", "", 0, 0, "", "", "", 0, 21)
+	query, args := buildHistoryQuery(historyFilter{View: "detections"}, 0, 0, historyPageCursor{}, 20)
+	query = "EXPLAIN QUERY PLAN " + query
+	rows, err := f.store.db.Query(query, args...)
 	if err != nil {
 		t.Fatal(err)
 	}

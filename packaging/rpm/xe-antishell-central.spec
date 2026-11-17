@@ -1,6 +1,6 @@
 Name:           xe-antishell-central
 Version:        0.1.0
-Release:        13%{?dist}
+Release:        14%{?dist}
 Summary:        Independent Xe-AntiShell central management service
 License:        MIT AND Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND BSD-1-Clause AND SunPro
 URL:            https://github.com/mkjang2000/Xe-AntiShell-Central
@@ -52,6 +52,13 @@ getent passwd xe-antishell-central >/dev/null || useradd -r -g xe-antishell-cent
 %systemd_postun_with_restart sentinel-central.service
 
 %changelog
+* Wed Nov 18 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-14
+- Push history filters into bounded metadata branches with event-type expression indexes
+- Isolate all console and legacy admin history reads from agent writes using a read-only WAL pool
+- Bound active searches and pool waits to three seconds with controlled JSON timeout errors
+- Cap history responses at eight MiB and retain exact continuation cursors without losing records
+- Preserve legacy admin ordering and immutable payloads through indexed same-snapshot reads
+
 * Wed Nov 18 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-13
 - Add guided opt-in global root execution and credential-change policy controls
 - Require a fresh compatible engine report before issuing privilege policies

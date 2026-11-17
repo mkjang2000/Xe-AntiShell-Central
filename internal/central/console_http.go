@@ -69,6 +69,9 @@ func consoleDecode(w http.ResponseWriter, r *http.Request, maximum int64, value 
 func (s *Server) consoleError(w http.ResponseWriter, operation string, err error) {
 	status, message := http.StatusInternalServerError, "중앙 저장소 또는 서비스에 연결할 수 없습니다"
 	switch {
+	case errors.Is(err, errHistoryTimeout):
+		status, message = http.StatusServiceUnavailable, "이력 조회 시간이 초과되었습니다. 기간·서버·유형을 좁혀 다시 조회하세요"
+		w.Header().Set("Retry-After", "1")
 	case errors.Is(err, ErrInvalid):
 		status, message = http.StatusBadRequest, "입력 값을 확인하세요"
 		if suffix, ok := strings.CutPrefix(err.Error(), ErrInvalid.Error()+": "); ok {

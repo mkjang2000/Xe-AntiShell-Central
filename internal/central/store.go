@@ -25,7 +25,10 @@ var (
 	identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
 )
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db        *sql.DB
+	historyDB *sql.DB
+}
 
 func Open(ctx context.Context, path string) (*Store, error) {
 	if !filepath.IsAbs(path) {
@@ -70,6 +73,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, errors.New("central database schema is newer than this binary")
 	}
 	if err = store.initializeSchema(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err = store.openHistoryReader(ctx, path); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -120,6 +127,9 @@ func (s *Store) initializeSchema(ctx context.Context) error {
 	if err = initializeErrorHistory(ctx, tx); err != nil {
 		return err
 	}
+	if _, err = tx.ExecContext(ctx, historyReadSchema); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, updateSchema); err != nil {
 		return err
 	}
@@ -140,8 +150,12 @@ func (s *Store) Close() error {
 	if s == nil || s.db == nil {
 		return nil
 	}
+	var readerErr error
+	if s.historyDB != nil {
+		readerErr = s.historyDB.Close()
+	}
 	_, err := s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
-	return errors.Join(err, s.db.Close())
+	return errors.Join(readerErr, err, s.db.Close())
 }
 
 type Agent struct {

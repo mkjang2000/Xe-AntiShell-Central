@@ -1,27 +1,20 @@
 package central
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 )
 
-const detectionHistoryProjection = `SELECT agent_id,kind AS source_kind,record_id,received_at_ns,payload,0 AS item,'finding' AS display_kind FROM records WHERE kind='finding'
-UNION ALL SELECT r.agent_id,r.kind,r.record_id,r.received_at_ns,j.value,CAST(j.key AS INTEGER),'finding' FROM records r INDEXED BY records_history_detection_bundle_idx,json_each(r.payload,'$.findings') j
-WHERE r.kind='event_bundle' AND json_array_length(r.payload,'$.findings')>0 AND json_type(r.payload,'$.findings')='array' AND j.type='object'`
-
-const historyPageQuery = `WITH history AS (%s) SELECT agent_id,display_kind,record_id,received_at_ns,payload,source_kind,item FROM history
-WHERE (?='' OR agent_id=?) AND (?=0 OR received_at_ns>=?) AND (?=0 OR received_at_ns<?)
-AND (?='' OR json_extract(payload,?)=?) AND (?='' OR instr(lower(CAST(payload AS TEXT)),lower(?))>0)
-AND (?=0 OR (received_at_ns,agent_id,source_kind,record_id,item)<(?,?,?,?,?))
-ORDER BY received_at_ns DESC,agent_id DESC,source_kind DESC,record_id DESC,item DESC LIMIT ?`
-
 // The projected views expose one event or one finding per row. Delivery bundles
 // remain immutable in records; legacy /api/history?kind= callers are unchanged.
 func (s *Server) consoleHistoryView(w http.ResponseWriter, r *http.Request) {
+	r, cancel := historyRequest(r)
+	defer cancel()
 	view := r.URL.Query().Get("view")
 	if view != "events" && view != "detections" && view != "agent_audit" {
-		s.consoleError(w, "history view", fmt.Errorf("%w: 이력 구분을 확인하세요", ErrInvalid))
+		s.historyError(w, r, "history view", fmt.Errorf("%w: 이력 구분을 확인하세요", ErrInvalid))
 		return
 	}
 	filter, from, until, err := readHistoryFilter(r, view)
@@ -34,52 +27,20 @@ func (s *Server) consoleHistoryView(w http.ResponseWriter, r *http.Request) {
 		cursor, err = readHistoryCursor(r, filter)
 	}
 	if err != nil {
-		s.consoleError(w, "history filter", err)
+		s.historyError(w, r, "history filter", err)
 		return
 	}
-	projection := `SELECT agent_id,kind AS source_kind,record_id,received_at_ns,payload,0 AS item,'audit' AS display_kind FROM records WHERE kind='audit'`
-	typePath := "$.action"
-	if view == "events" {
-		projection = `SELECT agent_id,kind AS source_kind,record_id,received_at_ns,payload,0 AS item,'event' AS display_kind FROM records WHERE kind='event'
-UNION ALL SELECT agent_id,kind,record_id,received_at_ns,json_extract(payload,'$.event'),0,'event' FROM records WHERE kind='event_bundle'`
-		typePath = "$.event_type"
-	} else if view == "detections" {
-		projection = detectionHistoryProjection
-		typePath = "$.rule_id"
-	}
-	rows, err := s.store.db.QueryContext(r.Context(), fmt.Sprintf(historyPageQuery, projection),
-		filter.Agent, filter.Agent, from, from, until, until, filter.Type, typePath, filter.Type, filter.Search, filter.Search, cursor.At, cursor.At, cursor.Agent, cursor.Kind, cursor.ID, cursor.Item, limit+1)
+	query, args := buildHistoryQuery(filter, from, until, cursor, limit)
+	page, hasMore, err := s.store.readHistoryPage(r.Context(), query, args, limit, historyResponseBytes, true)
 	if err != nil {
-		s.consoleError(w, "history view query", err)
+		s.historyError(w, r, "history view read", err)
 		return
 	}
 	items := []HistoryRecord{}
 	var next historyPageCursor
-	hasMore := false
-	for rows.Next() {
-		var item HistoryRecord
-		var at, index int64
-		var sourceKind string
-		var payload []byte
-		if err = rows.Scan(&item.AgentID, &item.Kind, &item.ID, &at, &payload, &sourceKind, &index); err != nil {
-			break
-		}
-		item.Payload = payload
-		if len(items) == limit {
-			hasMore = true
-			break
-		}
-		item.ReceivedAt = time.Unix(0, at).UTC()
-		items = append(items, item)
-		next = historyPageCursor{At: at, Agent: item.AgentID, Kind: sourceKind, ID: item.ID, Item: index, Filter: filter}
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	_ = rows.Close()
-	if err != nil {
-		s.consoleError(w, "history view rows", err)
-		return
+	for _, row := range page {
+		items = append(items, row.record)
+		next = historyPageCursor{At: row.at, Agent: row.record.AgentID, Kind: row.source, ID: row.record.ID, Item: row.item, Filter: filter}
 	}
 	if hasMore {
 		historyCursorHeader(w, next)
@@ -97,6 +58,8 @@ type AgentErrorRecord struct {
 }
 
 func (s *Server) consoleErrorHistory(w http.ResponseWriter, r *http.Request) {
+	r, cancel := historyRequest(r)
+	defer cancel()
 	filter, from, until, err := readHistoryFilter(r, "errors")
 	limit, limitErr := historyLimit(r)
 	if err == nil {
@@ -110,42 +73,46 @@ func (s *Server) consoleErrorHistory(w http.ResponseWriter, r *http.Request) {
 		cursor, err = readHistoryCursor(r, filter)
 	}
 	if err != nil {
-		s.consoleError(w, "error history filter", err)
+		s.historyError(w, r, "error history filter", err)
 		return
 	}
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id,agent_id,kind,transition,category,recorded_at_ns FROM console_agent_errors
+	query := `SELECT id,agent_id,kind,transition,category,recorded_at_ns FROM console_agent_errors
 WHERE (?='' OR agent_id=?) AND (?='' OR kind=?) AND (?=0 OR recorded_at_ns>=?) AND (?=0 OR recorded_at_ns<?)
 AND (?='' OR instr(lower(kind||' '||transition||' '||category),lower(?))>0)
-AND (?=0 OR (recorded_at_ns,id)<(?,?)) ORDER BY recorded_at_ns DESC,id DESC LIMIT ?`,
-		filter.Agent, filter.Agent, filter.Type, filter.Type, from, from, until, until, filter.Search, filter.Search, cursor.At, cursor.At, cursor.Item, limit+1)
+AND (?=0 OR (recorded_at_ns,id)<(?,?)) ORDER BY recorded_at_ns DESC,id DESC LIMIT ?`
+	args := []any{filter.Agent, filter.Agent, filter.Type, filter.Type, from, from, until, until, filter.Search, filter.Search, cursor.At, cursor.At, cursor.Item, limit + 1}
+	var body []byte
+	err = s.store.historyDB.QueryRowContext(r.Context(), "SELECT json_group_array(json_object('id',id,'agent',agent_id,'kind',kind,'transition',transition,'category',category,'at',recorded_at_ns)) FROM ("+query+")", args...).Scan(&body)
 	if err != nil {
-		s.consoleError(w, "error history query", err)
+		s.historyError(w, r, "error history query", err)
+		return
+	}
+	var values []struct {
+		ID         int64  `json:"id"`
+		Agent      string `json:"agent"`
+		Kind       string `json:"kind"`
+		Transition string `json:"transition"`
+		Category   string `json:"category"`
+		At         int64  `json:"at"`
+	}
+	if err = json.Unmarshal(body, &values); err != nil {
+		s.historyError(w, r, "error history decode", err)
 		return
 	}
 	items := []AgentErrorRecord{}
 	var next historyPageCursor
 	hasMore := false
-	for rows.Next() {
-		var item AgentErrorRecord
-		var at int64
-		if err = rows.Scan(&item.ID, &item.AgentID, &item.Kind, &item.Transition, &item.Category, &at); err != nil {
-			break
-		}
-		if len(items) == limit {
+	used := 0
+	for _, value := range values {
+		cost := 512 + 6*(len(value.Agent)+len(value.Kind)+len(value.Transition)+len(value.Category))
+		if len(items) == limit || len(items) > 0 && used+cost > historyResponseBytes {
 			hasMore = true
 			break
 		}
-		item.RecordedAt = time.Unix(0, at).UTC()
+		used += cost
+		item := AgentErrorRecord{ID: value.ID, AgentID: value.Agent, Kind: value.Kind, Transition: value.Transition, Category: value.Category, RecordedAt: time.Unix(0, value.At).UTC()}
 		items = append(items, item)
-		next = historyPageCursor{At: at, ID: "errors", Item: item.ID, Filter: filter}
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	_ = rows.Close()
-	if err != nil {
-		s.consoleError(w, "error history rows", err)
-		return
+		next = historyPageCursor{At: value.At, ID: "errors", Item: value.ID, Filter: filter}
 	}
 	if hasMore {
 		historyCursorHeader(w, next)
@@ -154,6 +121,8 @@ AND (?=0 OR (recorded_at_ns,id)<(?,?)) ORDER BY recorded_at_ns DESC,id DESC LIMI
 }
 
 func (s *Server) consoleFilteredAudit(w http.ResponseWriter, r *http.Request) {
+	r, cancel := historyRequest(r)
+	defer cancel()
 	filter, from, until, err := readHistoryFilter(r, "audit")
 	limit, limitErr := historyLimit(r)
 	if err == nil {
@@ -164,43 +133,25 @@ func (s *Server) consoleFilteredAudit(w http.ResponseWriter, r *http.Request) {
 		cursor, err = readHistoryCursor(r, filter)
 	}
 	if err != nil {
-		s.consoleError(w, "audit filters", err)
+		s.historyError(w, r, "audit filters", err)
 		return
 	}
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT audit_id,agent_id,kind,created_at_ns,details_json FROM audit
+	page, hasMore, err := s.store.readAuditPage(r.Context(), `SELECT audit_id,agent_id,kind,created_at_ns FROM audit
 WHERE (?='' OR agent_id=?) AND (?='' OR kind=?) AND (?=0 OR created_at_ns>=?) AND (?=0 OR created_at_ns<?)
 AND (?='' OR instr(lower(agent_id||' '||kind||' '||CAST(details_json AS TEXT)),lower(?))>0)
 AND (?=0 OR (created_at_ns,audit_id)<(?,?)) ORDER BY created_at_ns DESC,audit_id DESC LIMIT ?`,
-		filter.Agent, filter.Agent, filter.Type, filter.Type, from, from, until, until, filter.Search, filter.Search, cursor.At, cursor.At, cursor.Item, limit+1)
+		[]any{filter.Agent, filter.Agent, filter.Type, filter.Type, from, from, until, until, filter.Search, filter.Search, cursor.At, cursor.At, cursor.Item, limit + 1}, limit, historyResponseBytes)
 	if err != nil {
-		s.consoleError(w, "audit filtered query", err)
+		s.historyError(w, r, "audit filtered read", err)
 		return
 	}
 	items := []AuditEntry{}
 	var next historyPageCursor
-	hasMore := false
-	for rows.Next() {
-		var item AuditEntry
-		var at int64
-		if err = rows.Scan(&item.ID, &item.AgentID, &item.Kind, &at, &item.Details); err != nil {
-			break
-		}
-		if len(items) == limit {
-			hasMore = true
-			break
-		}
-		item.CreatedAt = time.Unix(0, at).UTC()
-		items = append(items, item)
-		next = historyPageCursor{At: at, ID: "audit", Item: item.ID, Filter: filter}
+	for _, row := range page {
+		items = append(items, row.record)
+		next = historyPageCursor{At: row.at, ID: "audit", Item: row.record.ID, Filter: filter}
 	}
-	if err == nil {
-		err = rows.Err()
-	}
-	_ = rows.Close()
-	if err != nil {
-		s.consoleError(w, "audit filtered rows", err)
-		return
-	}
+
 	if hasMore {
 		historyCursorHeader(w, next)
 	}

@@ -168,6 +168,10 @@ func (s *Server) apiError(w http.ResponseWriter, operation string, err error) {
 	status := http.StatusInternalServerError
 	message := "central storage or service unavailable"
 	switch {
+	case errors.Is(err, errHistoryTimeout):
+		status = http.StatusServiceUnavailable
+		message = "history query timed out; narrow the period, agent or type"
+		w.Header().Set("Retry-After", "1")
 	case errors.Is(err, ErrInvalid):
 		status = http.StatusBadRequest
 		message = "request rejected"

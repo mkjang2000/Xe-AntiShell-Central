@@ -21,6 +21,10 @@ Xe-AntiShell-Central/
 │   ├── enrollment_code.go        # Certificate-bound endpoint config and installation-code issuance
 │   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
 │   ├── history_read.go           # Separate finding/event/error/audit projections
+│   ├── history_query.go          # Literal JSON filters, bounded metadata branches and compatible cursors
+│   ├── history_reader.go         # Isolated read-only WAL pool, deadlines and legacy admin reads
+│   ├── history_page.go           # Same-snapshot record lookup and bounded response pagination
+│   ├── history_audit.go          # Bounded audit metadata/detail reads on the history pool
 │   ├── agent_errors.go           # Durable deduplicated error transitions from heartbeats
 │   ├── privilege_policy.go        # Current-enrollment engine compatibility gate for opt-in policies
 │   ├── privilege_evidence.go      # Paired credential proof validation before ingest
@@ -52,6 +56,7 @@ Xe-AntiShell-Central/
 │   ├── plans/independent-central.md
 │   ├── plans/privilege-detection-console.md
 │   ├── plans/central-privilege-rollout.md
+│   ├── plans/history-query-performance.md
 │   └── analysis/managed-v1-operations.md
 ├── third_party/licenses/          # Preserved upstream license texts
 ├── install.sh                    # Explicit source/local-RPM installation
@@ -109,6 +114,11 @@ Authenticated console → installation code with public CA → agent wizard → 
 - Central records retain their original immutable payloads; finding/event views
   project individual items before filtering/pagination. Operational error history
   stores categories and transitions, preserving no historical raw diagnostics.
+- History uses one dedicated read-only WAL connection with a three-second deadline.
+  Literal event-type expression indexes and branch-local filters/limits select only
+  metadata before fetching immutable payloads by primary key in the same snapshot.
+  Eight-MiB response budgets preserve the last returned item's continuation cursor;
+  legacy admin endpoints keep their original ordering and upper-limit semantics.
 - Browser modules separate account administration, history filters, permission
   presentation, capability editing and theme preferences. No frontend build or
   third-party browser runtime dependency is required.
