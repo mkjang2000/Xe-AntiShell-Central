@@ -116,6 +116,9 @@ func validateRecord(record managed.Record) ([]byte, error) {
 		if json.Unmarshal(body, &event) != nil || event.ID != record.ID || event.Type == "" || event.EventTime.IsZero() {
 			return nil, errors.New("invalid event record")
 		}
+		if err := validatePrivilegeObservation(event); err != nil {
+			return nil, err
+		}
 	case "finding":
 		var finding model.Finding
 		if json.Unmarshal(body, &finding) != nil || finding.ID != record.ID || finding.RuleID == "" || finding.CreatedAt.IsZero() {
@@ -128,6 +131,9 @@ func validateRecord(record managed.Record) ([]byte, error) {
 		}
 		if json.Unmarshal(body, &bundle) != nil || bundle.Event.ID != record.ID || bundle.Event.Type == "" || len(bundle.Findings) > 64 {
 			return nil, errors.New("invalid event bundle")
+		}
+		if err := validatePrivilegeObservation(bundle.Event); err != nil {
+			return nil, err
 		}
 		for _, finding := range bundle.Findings {
 			if finding.ID == "" || finding.RuleID == "" || len(finding.EvidenceEventIDs) == 0 {

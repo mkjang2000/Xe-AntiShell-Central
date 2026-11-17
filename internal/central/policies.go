@@ -26,7 +26,8 @@ func (s *Store) AssignPolicy(ctx context.Context, signed managed.SignedPolicy, n
 	defer tx.Rollback()
 	var enrollment string
 	var current uint64
-	if err = tx.QueryRowContext(ctx, "SELECT enrollment_id,desired_policy_revision FROM agents WHERE agent_id=? AND revoked=0", policy.AgentID).Scan(&enrollment, &current); errors.Is(err, sql.ErrNoRows) {
+	var heartbeat []byte
+	if err = tx.QueryRowContext(ctx, "SELECT enrollment_id,desired_policy_revision,heartbeat_json FROM agents WHERE agent_id=? AND revoked=0", policy.AgentID).Scan(&enrollment, &current, &heartbeat); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
@@ -41,6 +42,9 @@ func (s *Store) AssignPolicy(ctx context.Context, signed managed.SignedPolicy, n
 			return nil
 		}
 		return ErrConflict
+	}
+	if err = requirePrivilegePolicySupport(policy.Detection, heartbeat, policy.AgentID, policy.EnrollmentID, now); err != nil {
+		return err
 	}
 	if _, err = tx.ExecContext(ctx, "INSERT INTO policies(agent_id,enrollment_id,revision,signed_json) VALUES(?,?,?,?)", policy.AgentID, enrollment, policy.Revision, body); err != nil {
 		return err

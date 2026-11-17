@@ -83,7 +83,7 @@
     "collector.audit": "감사 기록 수집기", "host.platform": "운영체제 정보", "kernel.ebpf": "eBPF 실행 환경",
     "kernel.btf": "커널 형식 정보", "kernel.cgroup": "서비스 구분 정보", "integrity.ima": "운영체제 파일 측정 정보",
     "integrity.tpm": "TPM 장치 진단", "observation.file": "파일 쓰기 관측", "observation.network": "TCP 연결 요청 관측",
-    "observation.credential_change": "권한 변경 감시"
+    "observation.credential_change": "권한 변경 관측", "detection.privilege_rules": "전역 root·권한 변경 탐지 엔진"
   };
   C.capabilityFresh = (name, value, agent) => {
     if (C.connection(agent).key !== "online") return false;
@@ -103,9 +103,14 @@
     if (name.startsWith("integrity.")) return {...result, label: "검증 미제공", tone: "pending", note: "장치·측정 정보의 진단 항목입니다. 에이전트 무결성 검증은 현재 제공하지 않습니다."};
     if (item.runtime_state === "error") return {...result, label: "확인 오류", tone: "danger", note: "기능 실행에서 오류가 보고되었습니다. 서버 설정과 수집기 로그를 확인하세요."};
     if (!["supported","limited","unsupported","error"].includes(item.state)) return result;
+    if (name === "detection.privilege_rules" && item.implementation === "implemented") {
+      if (C.object(item.details).contract !== "1" || !["available","active"].includes(item.runtime_state)) return {...result,label:"엔진 지원 미확인",tone:"warning",note:"현재 보고에서 지원 계약과 엔진 가용성을 확인하지 못했습니다. 에이전트 버전과 실제 상태를 확인하세요."};
+      return {...result,label:item.runtime_state==="active"?"탐지 사용 중":"엔진 지원 보고",tone:item.runtime_state==="active"?"good":"neutral",note:"전역 root 실행과 권한 변경 규칙을 지원합니다. 엔진 지원은 센서의 실제 이벤트 수신이나 침해 발생 증거가 아닙니다. 이 규칙은 자동 종료 대상에 포함되지 않습니다."};
+    }
     const observationNotes = {
       "observation.process_lineage": "프로그램이 어느 서비스에서 실행되었는지 추적합니다. 일부 상위 프로세스 정보는 누락될 수 있습니다.",
       "observation.interpreter_exec": "실행 옵션 관측 이벤트가 보고됐습니다. 전용 수집 정책의 옵션 조건 또는 분리된 실행 인자로 직접 코드·임시 스크립트 실행 요청을 구분합니다. 기존 프로세스 내부 실행과 실행 성공·코드 내용은 확인하지 않습니다.",
+      "observation.credential_change": "커널 권한 변경 후크의 관측 이벤트가 보고됐습니다. 변경 전후·적용 결과·사용자 namespace를 개별 확인해야 하며 모든 권한 변경이나 침해 탐지를 보장하지 않습니다.",
       "observation.file": "선택한 수집 정책의 파일 쓰기 이벤트가 보고됐습니다. 경로와 호출 반환값을 관측하며 파일 내용·모든 쓰기·디스크 반영을 보장하지 않습니다.",
       "observation.network": "선택한 수집 정책의 TCP 연결 요청 이벤트가 보고됐습니다. 대상과 호출 반환값을 관측하며 연결 완료·모든 통신·전송 내용은 확인하지 않습니다."
     };
@@ -132,13 +137,13 @@
       active:["수집 동작 보고","good",activeNote],
       available:["사용 가능 · 미동작","neutral","서버 지원 조건은 확인했지만 실제 기능 동작은 아직 보고되지 않았습니다."],
       inactive:["사용 안 함","neutral","현재 이 기능을 사용하지 않습니다. 다른 수집기 사용 여부와 서버 설정을 확인하세요."],
-      unverified:["동작 미확인","warning",["observation.interpreter_exec","observation.file","observation.network"].includes(name)?"수집 정책이나 설정만으로 동작을 확인할 수 없습니다. 이 기능의 실제 관측 이벤트 수신은 아직 확인되지 않았습니다.":"실제 정보 수신을 확인하지 못했습니다. 에이전트 수집기 연결 상태를 확인하세요."]
+      unverified:["동작 미확인","warning",["observation.interpreter_exec","observation.file","observation.network","observation.credential_change"].includes(name)?"수집 정책이나 설정만으로 동작을 확인할 수 없습니다. 이 기능의 실제 관측 이벤트 수신은 아직 확인되지 않았습니다.":"실제 정보 수신을 확인하지 못했습니다. 에이전트 수집기 연결 상태를 확인하세요."]
     };
     if (Object.hasOwn(states, item.runtime_state)) { result.label = states[item.runtime_state][0]; result.tone = states[item.runtime_state][1]; result.note = states[item.runtime_state][2]; }
     return result;
   };
   C.eventLabel = value => {
-    const labels = {"process.exec":"프로그램 실행","process.exit":"프로그램 종료","process.exec_observation":"실행 옵션 관측","file.write":"파일 쓰기 관측","network.connect":"TCP 연결 요청 관측"};
+    const labels = {"process.exec":"프로그램 실행","process.exit":"프로그램 종료","process.exec_observation":"실행 옵션 관측","file.write":"파일 쓰기 관측","network.connect":"TCP 연결 요청 관측","process.credential_change":"프로세스 권한 변경 관측"};
     return Object.hasOwn(labels,value) ? labels[value] : "추가 수집 이벤트";
   };
   C.findingPresentation = value => {
@@ -187,7 +192,7 @@
     return challenge;
   };
   C.settingsFromValues = values => ({
-    detection: {enabled: Boolean(values.detectionEnabled), extended_process_rules: Boolean(values.extendedRules), web_executables: C.lines(values.webExecutables), web_services: C.lines(values.webServices), shells: C.lines(values.shells), allowed_pairs: C.lines(values.allowedPairs)},
+    detection: {enabled: Boolean(values.detectionEnabled), extended_process_rules: Boolean(values.extendedRules), ...(values.privilegeRules ? {privilege_rules:true,root_exec_alerts:values.rootExecAlerts||"suspicious"} : {}), web_executables: C.lines(values.webExecutables), web_services: C.lines(values.webServices), shells: C.lines(values.shells), allowed_pairs: C.lines(values.allowedPairs)},
     response: {mode: values.responseMode, action: values.responseAction, risk_threshold: Number(values.riskThreshold), min_confidence: Number(values.minConfidence), required_capabilities: C.lines(values.requiredCapabilities)},
     uninstall_mode: values.uninstallMode,
     monitoring: {enabled: Boolean(values.monitoringEnabled), sample_interval_seconds: Number(values.sampleInterval), process_limit: Number(values.processLimit)},
@@ -201,7 +206,8 @@
   };
   C.validateSettings = settings => {
     const d = settings.detection, r = settings.response, m = settings.monitoring;
-    if (d.enabled && (!d.shells.length || !d.web_executables.length && !d.web_services.length)) throw new Error("탐지를 사용하려면 웹 실행 파일 또는 서비스, 탐지할 셸을 입력하세요.");
+    if (d.privilege_rules !== undefined && typeof d.privilege_rules !== "boolean" || d.root_exec_alerts !== undefined && typeof d.root_exec_alerts !== "string" || d.root_exec_alerts && (!d.privilege_rules || !["suspicious","all"].includes(d.root_exec_alerts))) throw new Error("전역 root 실행 경보 범위를 확인하세요.");
+    if (d.enabled && !d.privilege_rules && (!d.shells.length || !d.web_executables.length && !d.web_services.length)) throw new Error("탐지를 사용하려면 웹 실행 파일 또는 서비스, 탐지할 셸을 입력하세요.");
     if (r.mode !== "observe" && (!d.enabled || r.action !== "terminate" || !r.required_capabilities.length || r.risk_threshold <= 0 || r.min_confidence <= 0)) throw new Error("모의 대응·자동 종료는 탐지 활성화, 종료 동작, 필수 기능 조건, 0보다 큰 위험 점수·신뢰도가 필요합니다.");
     const ranges = [[r.risk_threshold,0,100,"위험 점수",true],[r.min_confidence,0,1,"신뢰도",false],[m.sample_interval_seconds,5,3600,"수집 간격",true],[m.process_limit,1,2000,"프로세스 조회 수",true],[settings.validity_hours,1,8760,"정책 유효 기간",true]];
     for (const [n,min,max,label,integer] of ranges) if (!Number.isFinite(n) || n < min || n > max || integer && !Number.isInteger(n)) throw new Error(`${label}은 ${min}–${max} 범위${integer ? "의 정수" : ""}로 입력하세요.`);

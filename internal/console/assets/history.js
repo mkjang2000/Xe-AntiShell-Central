@@ -28,7 +28,7 @@
     const payload=C.object(record.payload),process=C.object(payload.process),finding=record.kind==="finding";
     const card=C.el("article",`record${finding?" finding":""}`),head=C.el("div","record-head");
     head.append(C.el("strong","record-title",record.agent_id),C.el("time","",`중앙 수신 ${C.time(record.received_at)}`));card.append(head);
-    if(finding){const copy=C.findingPresentation(payload),summary=C.el("p","record-summary");summary.append(severity(payload.severity),C.el("span","",` ${copy.title}`));card.append(summary,C.el("p","panel-note",copy.note),C.facts([["규칙",payload.rule_id],["탐지 시각",C.time(payload.created_at)],["관련 서비스",payload.origin_service],["위험 점수",`${C.value(payload.risk_score)} · 규칙 기여 점수이며 악성 확률이 아닙니다.`],["근거 이벤트",C.array(payload.evidence_event_ids).join(", ")],...(payload.detection_only===true?[["대응 범위","확장 탐지 전용 · 이 탐지는 자동 종료 대상에 포함되지 않습니다."]]:[])]));}
+    if(finding){const copy=C.findingPresentation(payload),summary=C.el("p","record-summary");summary.append(severity(payload.severity),C.el("span","",` ${copy.title}`));card.append(summary,C.el("p","panel-note",copy.note),C.facts([["규칙",payload.rule_id],["탐지 시각",C.time(payload.created_at)],["관련 서비스",payload.origin_service],["위험 점수",`${C.value(payload.risk_score)} · 규칙 기여 점수이며 악성 확률이 아닙니다.`],["근거 이벤트",C.array(payload.evidence_event_ids).join(", ")],...(payload.detection_only===true?[["대응 범위","탐지 전용 · 이 탐지는 자동 종료 대상에 포함되지 않습니다."]]:[])]));}
     else if(record.kind==="event"){
       const observation=C.eventObservation(payload);
       card.append(C.el("p","record-summary",`${process.exe||"실행 파일 미확인"} · ${C.eventLabel(payload.event_type)}`));
@@ -52,9 +52,9 @@
     for(const name of Object.keys(titles))C.id("historyTab"+name).setAttribute("aria-pressed",String(name===view));
     C.text("historyTitle",titles[view]||titles.detections);
     C.id("historyType").placeholder=view==="events"?"전체 유형 · 예: process.exec":view==="errors"?"agent / collector / policy":view==="agent_audit"?"전체 감사 유형":"전체 규칙 · 규칙 ID";
-    const types=view==="events"?["process.exec","process.exit","process.exec_observation","file.write","network.connect"]:view==="errors"?["agent","collector","policy"]:[];
+    const types=view==="events"?["process.exec","process.exit","process.exec_observation","file.write","network.connect","process.credential_change"]:view==="errors"?["agent","collector","policy"]:[];
     C.id("historyTypes").replaceChildren(...types.map(value=>{const option=C.el("option");option.value=value;if(view==="events")option.label=C.eventLabel(value);return option;}));
-    C.text("historyScope",view==="events"?"중앙에 전달·보존된 실행·수집 이력을 탐지 여부와 관계없이 조회합니다. 실행 옵션·선택한 파일 쓰기·TCP 연결 요청을 포함하며 모든 실행·파일·통신이나 기존 프로세스 내부 코드 실행을 보장하지 않습니다. 조건은 서버 전체 조회에 적용되며 수신 시각 역순입니다.":view==="errors"?"하트비트에 보고된 오류의 발생·변경·복구 이력입니다. 동일 오류의 반복 보고는 쌓지 않으며, 원문 오류 메시지는 보존하지 않습니다. 이전 버전의 과거 오류 전체는 복원할 수 없습니다.":view==="agent_audit"?"에이전트가 중앙에 전달·보존한 감사 기록입니다. 중앙 관리자 활동은 별도 감사 기록에서 조회하세요.":"의심 행위로 탐지된 finding만 조회합니다. 실행 이력과 구분되며 침해 확정을 뜻하지 않습니다. 기간은 중앙 수신 시각에 적용됩니다.");
+    C.text("historyScope",view==="events"?"중앙에 전달·보존된 실행·수집 이력을 탐지 여부와 관계없이 조회합니다. 실행 옵션·전역 root 실행·선택한 권한 변경·파일 쓰기·TCP 연결 요청을 포함하며 모든 실행·파일·통신이나 기존 프로세스 내부 코드 실행을 보장하지 않습니다. 조건은 서버 전체 조회에 적용되며 수신 시각 역순입니다.":view==="errors"?"하트비트에 보고된 오류의 발생·변경·복구 이력입니다. 동일 오류의 반복 보고는 쌓지 않으며, 원문 오류 메시지는 보존하지 않습니다. 이전 버전의 과거 오류 전체는 복원할 수 없습니다.":view==="agent_audit"?"에이전트가 중앙에 전달·보존한 감사 기록입니다. 중앙 관리자 활동은 별도 감사 기록에서 조회하세요.":"의심 행위로 탐지된 finding만 조회합니다. 실행 이력과 구분되며 침해 확정을 뜻하지 않습니다. 기간은 중앙 수신 시각에 적용됩니다.");
   };
   const load=async(prefix,state,view,endpoint,render,reset)=>{
     let params;

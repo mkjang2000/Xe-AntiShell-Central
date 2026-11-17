@@ -133,6 +133,9 @@ func consoleSnapshot(ctx context.Context, tx *sql.Tx, request consolePreviewRequ
 		if target.CurrentRevision >= math.MaxInt64 {
 			return snapshot, template, fmt.Errorf("%w: 정책 revision이 최대값에 도달했습니다", ErrInvalid)
 		}
+		if err = requirePrivilegePolicySupport(template.Settings.Detection, heartbeat, target.AgentID, target.EnrollmentID, now); err != nil {
+			return snapshot, template, err
+		}
 		target.NextRevision = target.CurrentRevision + 1
 		target.Warnings = consolePolicyWarnings(template.Settings, heartbeat, now)
 		snapshot.Targets = append(snapshot.Targets, target)

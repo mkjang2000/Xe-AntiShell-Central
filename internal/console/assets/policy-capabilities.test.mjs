@@ -32,7 +32,7 @@ function harness(keys = [], previewKeys = keys) {
     if (!document.nodes[id]) { const node = new Element("div", document); node.id = id; }
     return document.nodes[id];
   };
-  for (const id of ["detectionEnabled", "extendedRules", "monitoringEnabled", "integrityEnabled", "integrityTPM", "deployConfirm"]) document.getElementById(id).type = "checkbox";
+  for (const id of ["detectionEnabled", "extendedRules", "privilegeRules", "monitoringEnabled", "integrityEnabled", "integrityTPM", "deployConfirm"]) document.getElementById(id).type = "checkbox";
   const context = vm.createContext({document, Node: Element, structuredClone, AbortController, setTimeout, clearTimeout, location: {hash: ""}});
   vm.runInContext(source("model.js"), context); const C = context.XEC;
   const settings = {
@@ -78,7 +78,7 @@ test("capability editor preserves existing order, custom and unsupported keys on
   const h = harness(keys), before = plain(h.template); await h.open();
   assert.equal(h.choices.length, 6); assert.equal(h.choices.some(input => input.value === "observation.file"), false);
   assert.equal(h.custom.value, "vendor.custom\nobservation.file\ncustom_gate@v1");
-  assert.match(text(h.editor), /현재 제공하지 않습니다/); assert.match(text(h.editor), /파일 변경 수집/);
+  assert.match(text(h.editor), /별도 센서 수신/); assert.match(text(h.editor), /기본 추천 자동 종료 조건에 자동으로 추가하지 않습니다/); assert.match(text(h.editor), /파일 변경 수집/);
   assert.equal(h.C.hasUnsavedPolicy(), false);
   await h.submit();
   assert.deepEqual(h.errors, []); assert.deepEqual(h.requests[0].body.settings.response.required_capabilities, keys);
@@ -140,4 +140,17 @@ test("preview labels use the exact server snapshot and deploy only its token", a
   await h.deploy();
   assert.deepEqual(h.requests[1], {path: "/api/deploy", body: {preview_token: "exact-server-preview", confirm: true}});
   assert.deepEqual(plain(h.template.settings.response.required_capabilities), ["collector.audit"]);
+});
+
+
+test("privilege opt-in and root alert mode roundtrip while disabled fields disappear", async () => {
+ const h=harness();await h.open();
+ h.C.id("privilegeRules").checked=true;h.C.id("rootExecAlerts").value="all";h.C.id("templateForm").fire("input");
+ assert.equal(h.C.id("rootExecAlerts").disabled,false);
+ await h.submit();assert.deepEqual(h.errors,[]);
+ assert.equal(h.requests[0].body.settings.detection.privilege_rules,true);assert.equal(h.requests[0].body.settings.detection.root_exec_alerts,"all");
+ h.C.id("privilegeRules").checked=false;h.C.id("templateForm").fire("input");
+ assert.equal(h.C.id("rootExecAlerts").disabled,true);
+ await h.submit();assert.deepEqual(h.errors,[]);
+ assert.equal(Object.hasOwn(h.requests[1].body.settings.detection,"privilege_rules"),false);assert.equal(Object.hasOwn(h.requests[1].body.settings.detection,"root_exec_alerts"),false);
 });

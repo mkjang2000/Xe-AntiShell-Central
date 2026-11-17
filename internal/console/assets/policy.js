@@ -2,7 +2,7 @@
 
 (function (C) {
   const P = {initialized: false, dirty: false, preview: null, selectionRevision: 0};
-  const fields = ["detectionEnabled","extendedRules","webExecutables","webServices","shells","allowedPairs","responseMode","responseAction","riskThreshold","minConfidence","requiredCapabilities","monitoringEnabled","sampleInterval","processLimit","uninstallMode","validityHours","integrityEnabled","integrityTPM","integrityMode","integrityPaths"];
+  const fields = ["detectionEnabled","extendedRules","privilegeRules","rootExecAlerts","webExecutables","webServices","shells","allowedPairs","responseMode","responseAction","riskThreshold","minConfidence","requiredCapabilities","monitoringEnabled","sampleInterval","processLimit","uninstallMode","validityHours","integrityEnabled","integrityTPM","integrityMode","integrityPaths"];
   const setValue = (id, value) => { const field = C.id(id); if (field.type === "checkbox") field.checked = Boolean(value); else field.value = value ?? ""; };
   const listValue = value => C.array(value).join("\n");
   const setDirty = dirty => { P.dirty = dirty; C.text("templateDirty", dirty ? "저장하지 않은 변경 사항" : "저장 상태와 일치"); };
@@ -33,7 +33,7 @@
         : "자동 종료는 선택 조건 외에도 실행 정보·계보·서버의 로컬 종료 허용을 항상 검사합니다. 실행 후 종료 신호를 보내는 기능이며 실행 전 차단은 제공하지 않습니다.";
     if (keys.includes("collector.tetragon") && keys.includes("collector.audit")) messages.push("Tetragon과 Linux audit는 한 번에 하나만 실행 정보 수집기로 사용합니다. 두 수집기를 모두 필수로 선택하면 대응 조건이 충족되지 않습니다.");
     const unavailable = keys.filter(key => unavailableCapabilities.has(key));
-    if (unavailable.length) messages.push(`기존 조건 중 현재 대응 전제조건으로 충족되지 않는 항목: ${unavailable.map(key => unavailableCapabilities.get(key)).join(" · ")}. 고급 편집에서 확인하거나 제거할 수 있습니다.`);
+    if (unavailable.length) messages.push(`기본 추천 목록 밖의 기존 조건: ${unavailable.map(key => unavailableCapabilities.get(key)).join(" · ")}. 실제 지원·수신 여부는 대상 에이전트에서 확인해야 합니다. 고급 편집에서 유지하거나 제거할 수 있습니다.`);
     capabilityEditor.warning.textContent = messages.join(" "); capabilityEditor.warning.hidden = !messages.length;
   };
   const syncCapabilityEditor = () => {
@@ -74,11 +74,12 @@
       C.el("p", "field-note", "기존 사용자 정의 키는 그대로 보존합니다. 대상 에이전트가 보고하지 않거나 실동작을 확인할 수 없는 키는 대응 조건을 충족하지 못합니다. 목록에 있는 기능은 위 체크박스에서 선택하세요."));
     container.replaceChildren(help,
       C.el("p", "field-note", "에이전트에 구현된 조건을 선택합니다. 대상 서버의 실제 수집 상태와 로컬 종료 허용은 배포 미리보기에서 별도로 확인하세요."), choices, recommend,
-      C.el("p", "field-note", "파일·네트워크·자격 증명 변경 수집과 IMA·TPM 검증은 현재 제공하지 않습니다. 운영체제·BTF·cgroup은 환경 진단 정보이며 실동작 대응 조건으로 선택하지 않습니다."), warning, advanced);
+      C.el("p", "field-note", "파일 쓰기·TCP 연결·권한 변경 관측은 지원 에이전트와 별도 센서 수신을 확인해야 합니다. 이 관측 항목은 기본 추천 자동 종료 조건에 자동으로 추가하지 않습니다. 전역 root·권한 변경 규칙은 탐지 전용입니다. IMA·TPM 검증은 미제공이고 운영체제·BTF·cgroup은 환경 진단 정보입니다."), warning, advanced);
     capabilityEditor = {inputs, custom, help, warning, order: []};
   };
   const responseHelp = () => {
     const mode = C.id("responseMode").value;
+    C.id("rootExecAlerts").disabled = !C.id("privilegeRules").checked;
     C.text("responseHelp", mode === "enforce" ? "자동 종료는 서비스에 영향을 줄 수 있습니다. 위험 점수·신뢰도·필수 기능과 에이전트 로컬 종료 허용을 모두 만족해야 실행됩니다." : mode === "would_block" ? "실제 프로세스를 종료하지 않고 대응 조건 충족 여부를 기록합니다. 종료 동작·기능 조건·임계값을 명시하세요." : "탐지 결과를 기록하며 프로세스를 종료하지 않습니다.");
     capabilityHelp();
   };
@@ -89,7 +90,7 @@
   const canDiscard = async () => !P.dirty || await C.confirm({title:"편집 내용 버리기",description:"저장하지 않은 템플릿 변경 사항이 있습니다. 다른 템플릿을 열면 현재 편집 내용이 사라집니다.",accept:"편집 내용 버리기"});
   const fillSettings = settings => {
     const d = C.object(settings.detection), r = C.object(settings.response), m = C.object(settings.monitoring), i = C.object(settings.integrity);
-    const values = {detectionEnabled:d.enabled,extendedRules:d.extended_process_rules,webExecutables:listValue(d.web_executables),webServices:listValue(d.web_services),shells:listValue(d.shells),allowedPairs:listValue(d.allowed_pairs),responseMode:r.mode,responseAction:r.action,riskThreshold:r.risk_threshold,minConfidence:r.min_confidence,requiredCapabilities:listValue(r.required_capabilities),monitoringEnabled:m.enabled,sampleInterval:m.sample_interval_seconds,processLimit:m.process_limit,uninstallMode:settings.uninstall_mode,validityHours:settings.validity_hours,integrityEnabled:i.enabled,integrityTPM:i.require_tpm,integrityMode:i.mode || "observe",integrityPaths:listValue(i.paths)};
+    const values = {detectionEnabled:d.enabled,extendedRules:d.extended_process_rules,privilegeRules:d.privilege_rules,rootExecAlerts:d.root_exec_alerts||"suspicious",webExecutables:listValue(d.web_executables),webServices:listValue(d.web_services),shells:listValue(d.shells),allowedPairs:listValue(d.allowed_pairs),responseMode:r.mode,responseAction:r.action,riskThreshold:r.risk_threshold,minConfidence:r.min_confidence,requiredCapabilities:listValue(r.required_capabilities),monitoringEnabled:m.enabled,sampleInterval:m.sample_interval_seconds,processLimit:m.process_limit,uninstallMode:settings.uninstall_mode,validityHours:settings.validity_hours,integrityEnabled:i.enabled,integrityTPM:i.require_tpm,integrityMode:i.mode || "observe",integrityPaths:listValue(i.paths)};
     for (const id of fields) setValue(id, values[id]); fillCapabilityEditor(); responseHelp();
   };
   const fillTemplate = template => {
@@ -146,6 +147,7 @@
     const full = C.el("details","technical"), monitoring = C.object(settings.monitoring), integrity = C.object(settings.integrity);
     full.append(C.el("summary","","탐지 범위·대응 조건·모니터링 전체 확인"),C.facts([
       ["탐지 / 확장 규칙",`${detection.enabled?"사용":"사용 안 함"} / ${detection.extended_process_rules?"사용":"사용 안 함"}`],
+      ["전역 root·권한 변경 탐지",detection.privilege_rules?`사용 · ${detection.root_exec_alerts==="all"?"모든 root 실행 경보":"의심 문맥만 경보"} · 자동 종료 대상 아님`:"사용 안 함"],
       ["탐지 셸",C.array(detection.shells).join(" · ")||"없음"],["탐지 예외",C.array(detection.allowed_pairs).join(" · ")||"없음"],
       ["대응 동작",response.action==="terminate"?"프로세스 종료":"동작 없음"],["필수 기능 조건",capabilitySummary(response.required_capabilities)],
       ["자원 모니터링",`${monitoring.enabled?"사용":"사용 안 함"} · ${monitoring.sample_interval_seconds}초 간격 · 프로세스 ${monitoring.process_limit}개`],
