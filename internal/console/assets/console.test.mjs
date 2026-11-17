@@ -88,9 +88,22 @@ test("passive response restrictions cannot become active collection or automatic
 
 test("active eBPF diagnosis describes only the observed process execution hooks",()=>{
   const {C}=model();
-  const ebpf=C.capability("kernel.ebpf",{state:"limited",implementation:"implemented",runtime_state:"active"},true);
-  assert.equal(ebpf.label,"동작 진단 확인");assert.equal(ebpf.implementation,"환경 진단");
-  assert.match(ebpf.note,/프로세스 eBPF 후크/);assert.match(ebpf.note,/그 밖의 eBPF 기능은 별도 검증/);
+  for(const state of ["limited","unsupported","error"]){
+    const ebpf=C.capability("kernel.ebpf",{state,implementation:"implemented",runtime_state:"active"},true);
+    assert.equal(ebpf.label,"동작 진단 확인");assert.equal(ebpf.tone,"good");assert.equal(ebpf.implementation,"환경 진단");
+    assert.match(ebpf.note,/프로세스 eBPF 후크/);assert.match(ebpf.note,/그 밖의 eBPF 기능은 별도 검증/);
+    if(state!=="limited")assert.match(ebpf.note,/사전 환경 진단.*일치하지 않습니다/);
+  }
+  const active={state:"limited",implementation:"implemented",runtime_state:"active"};
+  assert.equal(C.capability("kernel.ebpf",active,false).label,"최신 상태 미확인");
+  assert.equal(C.capability("kernel.ebpf",{...active,runtime_state:"error"},true).label,"확인 오류");
+  assert.equal(C.capability("kernel.ebpf",{...active,implementation:"planned"},true).label,"미제공");
+  for(const implementation of [undefined,"unknown"]){
+    for(const state of ["supported","limited","unsupported","error"]){
+      const unknown=C.capability("kernel.ebpf",{...active,state,implementation},true);
+      assert.notEqual(unknown.tone,"good");assert.notEqual(unknown.label,"동작 진단 확인");
+    }
+  }
 });
 
 test("missing metrics remain unknown while observed zero remains zero",()=>{

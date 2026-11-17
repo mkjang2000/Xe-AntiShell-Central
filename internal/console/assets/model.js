@@ -96,16 +96,18 @@
     if (name.startsWith("integrity.")) return {...result, label: "검증 미제공", tone: "pending", note: "장치·측정 정보의 진단 항목입니다. 에이전트 무결성 검증은 현재 제공하지 않습니다."};
     if (item.runtime_state === "error") return {...result, label: "확인 오류", tone: "danger", note: "기능 실행에서 오류가 보고되었습니다. 서버 설정과 수집기 로그를 확인하세요."};
     const activeNote = name === "observation.process_lineage" ? "프로그램이 어느 서비스에서 실행되었는지 추적합니다. 일부 상위 프로세스 정보는 누락될 수 있습니다." : "에이전트에서 실행 정보를 수신하고 있습니다. 보존 이력은 탐지와 관련된 기록을 중심으로 표시합니다.";
-    if (item.implementation === "implemented" && item.runtime_state === "active" && (name.startsWith("collector.") || name.startsWith("observation."))) {
-      const mismatch = ["unsupported", "error"].includes(item.state) ? " 사전 환경 진단은 실제 수집 보고와 일치하지 않습니다. 기술 보고 원문을 확인하세요." : "";
+    const live = item.implementation === "implemented" && item.runtime_state === "active";
+    const mismatch = ["unsupported", "error"].includes(item.state) ? " 사전 환경 진단은 실제 수집 보고와 일치하지 않습니다. 기술 보고 원문을 확인하세요." : "";
+    if (live && name === "kernel.ebpf") return {...result, label: "동작 진단 확인", tone: "good", note: "Tetragon 실행 이벤트로 프로세스 eBPF 후크 동작을 확인했습니다. 확인 범위는 프로세스 실행 후크이며, 그 밖의 eBPF 기능은 별도 검증이 필요합니다." + mismatch};
+    if (live && (name.startsWith("collector.") || name.startsWith("observation."))) {
       return {...result, label: "수집 동작 보고", tone: "good", note: activeNote + mismatch};
     }
     if (item.state === "error") return {...result, label: "확인 오류", tone: "danger", note: "환경 확인에서 오류가 보고되었습니다. 서버 설정과 수집기 로그를 확인하세요."};
     if (item.state === "unsupported") return {...result, label: "지원 안 함", tone: "neutral", note: "현재 서버 환경에서 이 기능의 지원 조건을 충족하지 못했습니다."};
     if (diagnostic) {
-      const label = item.runtime_state === "active" ? "동작 진단 확인" : item.state === "supported" ? "환경 조건 확인" : "일부 조건 미확인";
-      const note = name === "kernel.ebpf" && item.runtime_state === "active" ? "Tetragon 실행 이벤트로 프로세스 eBPF 후크 동작을 확인했습니다. 확인 범위는 프로세스 실행 후크이며, 그 밖의 eBPF 기능은 별도 검증이 필요합니다." : "수집·대응에 필요한 서버 환경의 진단 결과입니다. 실제 수집 여부는 해당 수집 기능의 실동작 보고에서 확인하세요.";
-      return {...result, label, tone: item.runtime_state === "active" ? "good" : "neutral", note};
+      const active = name !== "kernel.ebpf" && item.runtime_state === "active";
+      const label = active ? "동작 진단 확인" : item.state === "supported" ? "환경 조건 확인" : "일부 조건 미확인";
+      return {...result, label, tone: active ? "good" : "neutral", note: "수집·대응에 필요한 서버 환경의 진단 결과입니다. 실제 수집 여부는 해당 수집 기능의 실동작 보고에서 확인하세요."};
     }
     if (item.implementation !== "implemented") return result;
     if (name === "response.terminate") {
