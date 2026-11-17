@@ -56,7 +56,9 @@ getent passwd xe-antishell-central >/dev/null || useradd -r -g xe-antishell-cent
 - Manage bounded immutable agent RPM releases and explicit server/group update rollouts
 - Bind mTLS update plans, short install claims and durable reports to each enrollment
 - Stop remaining targets after failed or expired updates and retain late report history
-- Pin shared protocol v0.1.5 without changing legacy heartbeat or policy contracts
+- Verify independent publisher manifests for manual RPM upload and fixed GitHub import
+- Require post-restart collection verification before update success
+- Pin shared protocol v0.2.0 without changing legacy heartbeat or policy contracts
 
 * Tue Nov 17 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-11
 - Explain typed interpreter, file-write and TCP-initiation observations

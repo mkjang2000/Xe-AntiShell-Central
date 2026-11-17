@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +27,12 @@ func updateVersion(pack managed.RPMPackage) string {
 }
 func updateFixture(t *testing.T) *fixture {
 	f := setup(t)
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.updatePublisherPrivate = private
+	f.server.updatePublishers = map[string]ed25519.PublicKey{"synthetic-release": public}
 	f.server.updateBlobs.inspect = func(ctx context.Context, path string) (managed.RPMPackage, string, error) {
 		var pack managed.RPMPackage
 		body, err := os.ReadFile(path)
@@ -37,10 +46,21 @@ func updateFixture(t *testing.T) *fixture {
 	}
 	return f
 }
+
+func (f *fixture) signedUpdateBody(t *testing.T, body []byte, pack managed.RPMPackage) managed.SignedReleaseManifest {
+	t.Helper()
+	digest := sha256.Sum256(body)
+	manifest := managed.ReleaseManifest{SchemaVersion: managed.SchemaVersion, ArtifactName: pack.Name + "-" + pack.Version + "-" + pack.Release + "." + pack.Arch + ".rpm", Package: pack, OSFamily: "rhel", OSMajor: "9", SHA256: hex.EncodeToString(digest[:]), Size: int64(len(body)), PublishedAt: f.server.now().UTC()}
+	signed, err := managed.SignReleaseManifest(manifest, "synthetic-release", f.updatePublisherPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signed
+}
 func (f *fixture) updateRelease(t *testing.T, n int) ConsoleUpdateRelease {
 	t.Helper()
 	body, _ := json.Marshal(updatePackage(n))
-	release, _, err := f.server.publishUpdateRelease(context.Background(), bytes.NewReader(body), "admin")
+	release, _, err := f.server.publishUpdateRelease(context.Background(), bytes.NewReader(body), "admin", f.signedUpdateBody(t, body, updatePackage(n)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +76,7 @@ func (f *fixture) updateInventory(t *testing.T, id string, n int) (authenticated
 func (f *fixture) putUpdateInventory(t *testing.T, agent authenticatedAgent, n int) {
 	t.Helper()
 	pack := updatePackage(n)
-	inventory := managed.UpdateInventory{ProtocolVersion: 1, Supported: true, Enabled: true, OSFamily: "rhel", OSMajor: "9", Arch: "x86_64", InstalledPackage: &pack, RunningVersion: updateVersion(pack), ObservedAt: f.server.now().UTC()}
+	inventory := managed.UpdateInventory{ProtocolVersion: managed.UpdateProtocolVersion, Supported: true, Enabled: true, OSFamily: "rhel", OSMajor: "9", Arch: "x86_64", InstalledPackage: &pack, RunningVersion: updateVersion(pack), ObservedAt: f.server.now().UTC()}
 	if err := f.server.recordUpdateInventory(context.Background(), agent, inventory); err != nil {
 		t.Fatal(err)
 	}
@@ -115,14 +135,14 @@ func (f *fixture) offerUpdate(t *testing.T, agent authenticatedAgent) managed.Si
 		t.Fatal(err)
 	}
 	keys := map[string]ed25519.PublicKey{f.material.PolicyKeyID: f.material.PolicyKey.Public().(ed25519.PublicKey)}
-	if _, err = managed.VerifyUpdatePlan(plan, keys, agent.ID, agent.EnrollmentID, plan.Plan.Revision, f.server.now()); err != nil {
+	if _, err = managed.VerifyUpdatePlan(plan, keys, f.server.updatePublishers, agent.ID, agent.EnrollmentID, plan.Plan.Revision, f.server.now()); err != nil {
 		t.Fatal(err)
 	}
 	return plan
 }
 func (f *fixture) updateReport(t *testing.T, plan managed.SignedUpdatePlan, sequence uint64, state string) managed.UpdateReport {
 	t.Helper()
-	report := managed.UpdateReport{ProtocolVersion: 1, JobID: plan.Plan.JobID, EnrollmentID: plan.Plan.EnrollmentID, Revision: plan.Plan.Revision, Sequence: sequence, State: state, ObservedAt: f.server.now().UTC(), RunningVersion: updateVersion(plan.Plan.ExpectedPackage)}
+	report := managed.UpdateReport{ProtocolVersion: managed.UpdateProtocolVersion, JobID: plan.Plan.JobID, EnrollmentID: plan.Plan.EnrollmentID, Revision: plan.Plan.Revision, Sequence: sequence, State: state, ObservedAt: f.server.now().UTC(), RunningVersion: updateVersion(plan.Plan.ExpectedPackage)}
 	if state == "failed" {
 		report.ErrorCode = "install_failed"
 	}
@@ -130,6 +150,7 @@ func (f *fixture) updateReport(t *testing.T, plan managed.SignedUpdatePlan, sequ
 		pack := plan.Plan.Release.Package
 		report.InstalledPackage = &pack
 		report.RunningVersion = updateVersion(pack)
+		report.CollectionCheck = "verified"
 	}
 	if err := f.server.recordUpdateReport(context.Background(), authenticatedAgent{ID: plan.Plan.AgentID, EnrollmentID: plan.Plan.EnrollmentID}, report); err != nil {
 		t.Fatal(err)
@@ -141,7 +162,7 @@ func TestUpdateReleaseImmutableDedupAndMetadata(t *testing.T) {
 	f := updateFixture(t)
 	release := f.updateRelease(t, 24)
 	body, _ := json.Marshal(updatePackage(24))
-	duplicate, same, err := f.server.publishUpdateRelease(context.Background(), bytes.NewReader(body), "admin")
+	duplicate, same, err := f.server.publishUpdateRelease(context.Background(), bytes.NewReader(body), "admin", f.signedUpdateBody(t, body, updatePackage(24)))
 	if err != nil || !same || duplicate.ID != release.ID {
 		t.Fatalf("dedupe: %v %v", same, err)
 	}
@@ -151,7 +172,8 @@ func TestUpdateReleaseImmutableDedupAndMetadata(t *testing.T) {
 		t.Fatal("release not private regular blob")
 	}
 	f.server.updateBlobs.inspect = func(context.Context, string) (managed.RPMPackage, string, error) { return updatePackage(24), "9", nil }
-	if _, _, err = f.server.publishUpdateRelease(context.Background(), bytes.NewReader([]byte("different bytes, identical NEVRA")), "admin"); !errors.Is(err, ErrConflict) {
+	different := []byte("different bytes, identical NEVRA")
+	if _, _, err = f.server.publishUpdateRelease(context.Background(), bytes.NewReader(different), "admin", f.signedUpdateBody(t, different, updatePackage(24))); !errors.Is(err, ErrConflict) {
 		t.Fatal("version was replaced")
 	}
 	staged, _ := os.ReadDir(filepath.Join(f.directory, "update-blobs/staging"))
@@ -247,7 +269,7 @@ func TestUpdateReEnrollmentRejectsOldInventoryPlanArtifactClaimReport(t *testing
 	}{
 		{"GET", "/v1/update", nil}, {"GET", "/v1/update/artifacts/" + release.ID, nil},
 		{"POST", "/v1/update/claim", managed.UpdateClaim{JobID: plan.Plan.JobID, EnrollmentID: old.EnrollmentID, Revision: 1}},
-		{"POST", "/v1/update/report", managed.UpdateReport{ProtocolVersion: 1, JobID: plan.Plan.JobID, EnrollmentID: old.EnrollmentID, Revision: 1, Sequence: 1, State: "ready", ObservedAt: time.Now()}},
+		{"POST", "/v1/update/report", managed.UpdateReport{ProtocolVersion: managed.UpdateProtocolVersion, JobID: plan.Plan.JobID, EnrollmentID: old.EnrollmentID, Revision: 1, Sequence: 1, State: "ready", ObservedAt: time.Now()}},
 	} {
 		if w := f.request(t, test.method, test.path, test.value, oldCert, ""); w.Code != 401 {
 			t.Fatalf("old %s accepted: %d", test.path, w.Code)

@@ -2,6 +2,7 @@ package central
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +14,7 @@ import (
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 )
 
-func updateConsoleClient(t *testing.T, f *fixture) func(string, string, []byte, string) *httptest.ResponseRecorder {
+func updateAuthenticatedConsole(t *testing.T, f *fixture) func(*http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 	credentials, err := console.GenerateCredentials("admin", "synthetic-update-password", console.Argon2Parameters{Time: 1, Memory: 8 * 1024, Threads: 1, KeyLen: 32})
 	if err != nil {
@@ -39,15 +40,29 @@ func updateConsoleClient(t *testing.T, f *fixture) func(string, string, []byte, 
 	if json.Unmarshal(response.Body.Bytes(), &session) != nil || session["csrf_token"] == "" {
 		t.Fatal("missing test session")
 	}
-	return func(method, path string, body []byte, media string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, "http://localhost:9089"+path, bytes.NewReader(body))
+	return func(r *http.Request) *httptest.ResponseRecorder {
 		r.AddCookie(cookie)
 		r.Header.Set("Origin", "http://localhost:9089")
 		r.Header.Set("X-CSRF-Token", session["csrf_token"])
-		r.Header.Set("Content-Type", media)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
 		return w
+	}
+}
+
+func updateConsoleClient(t *testing.T, f *fixture) func(string, string, []byte, string) *httptest.ResponseRecorder {
+	send := updateAuthenticatedConsole(t, f)
+	return func(method, path string, body []byte, media string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "http://localhost:9089"+path, bytes.NewReader(body))
+		r.Header.Set("Content-Type", media)
+		if method == "POST" && path == "/api/updates/releases" {
+			var pack managed.RPMPackage
+			if json.Unmarshal(body, &pack) == nil {
+				manifest, _ := json.Marshal(f.signedUpdateBody(t, body, pack))
+				r.Header.Set("X-XEAS-Release-Manifest", base64.RawURLEncoding.EncodeToString(manifest))
+			}
+		}
+		return send(r)
 	}
 }
 
@@ -66,7 +81,7 @@ func TestUpdateAuthenticatedConsoleAndMTLSEndToEnd(t *testing.T) {
 	json.Unmarshal(upload.Body.Bytes(), &result)
 	enrolled, cert, _ := f.enroll(t, "agent-a")
 	current := updatePackage(23)
-	inventory := managed.UpdateInventory{ProtocolVersion: 1, Supported: true, Enabled: true, OSFamily: "rhel", OSMajor: "9", Arch: "x86_64", InstalledPackage: &current, RunningVersion: updateVersion(current), ObservedAt: time.Now().UTC()}
+	inventory := managed.UpdateInventory{ProtocolVersion: managed.UpdateProtocolVersion, Supported: true, Enabled: true, OSFamily: "rhel", OSMajor: "9", Arch: "x86_64", InstalledPackage: &current, RunningVersion: updateVersion(current), ObservedAt: time.Now().UTC()}
 	if w := f.request(t, "POST", "/v1/update/status", inventory, cert, ""); w.Code != 200 {
 		t.Fatalf("inventory %d", w.Code)
 	}
@@ -91,7 +106,7 @@ func TestUpdateAuthenticatedConsoleAndMTLSEndToEnd(t *testing.T) {
 	var plan managed.SignedUpdatePlan
 	json.Unmarshal(response.Body.Bytes(), &plan)
 	for index, state := range []string{"downloading", "ready"} {
-		report := managed.UpdateReport{ProtocolVersion: 1, JobID: plan.Plan.JobID, EnrollmentID: enrolled.EnrollmentID, Revision: plan.Plan.Revision, Sequence: uint64(index + 1), State: state, ObservedAt: time.Now().UTC(), RunningVersion: current.RunningVersion()}
+		report := managed.UpdateReport{ProtocolVersion: managed.UpdateProtocolVersion, JobID: plan.Plan.JobID, EnrollmentID: enrolled.EnrollmentID, Revision: plan.Plan.Revision, Sequence: uint64(index + 1), State: state, ObservedAt: time.Now().UTC(), RunningVersion: current.RunningVersion()}
 		if w := f.request(t, "POST", "/v1/update/report", report, cert, ""); w.Code != 200 {
 			t.Fatalf("%s %d", state, w.Code)
 		}
@@ -100,7 +115,7 @@ func TestUpdateAuthenticatedConsoleAndMTLSEndToEnd(t *testing.T) {
 	if w := f.request(t, "POST", "/v1/update/claim", claim, cert, ""); w.Code != 200 {
 		t.Fatalf("claim %d", w.Code)
 	}
-	success := managed.UpdateReport{ProtocolVersion: 1, JobID: plan.Plan.JobID, EnrollmentID: enrolled.EnrollmentID, Revision: plan.Plan.Revision, Sequence: 3, State: "succeeded", InstalledPackage: &pack, RunningVersion: updateVersion(pack), ObservedAt: time.Now().UTC()}
+	success := managed.UpdateReport{ProtocolVersion: managed.UpdateProtocolVersion, JobID: plan.Plan.JobID, EnrollmentID: enrolled.EnrollmentID, Revision: plan.Plan.Revision, Sequence: 3, State: "succeeded", InstalledPackage: &pack, RunningVersion: updateVersion(pack), ObservedAt: time.Now().UTC(), CollectionCheck: "verified"}
 	if w := f.request(t, "POST", "/v1/update/report", success, cert, ""); w.Code != 200 {
 		t.Fatalf("success %d %s", w.Code, w.Body.String())
 	}

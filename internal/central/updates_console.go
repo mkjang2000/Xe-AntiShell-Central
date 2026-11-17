@@ -32,7 +32,15 @@ func (s *Server) consoleUpdateReleases(w http.ResponseWriter, r *http.Request) {
 			s.consoleError(w, "update catalog", err)
 			return
 		}
-		respond(w, http.StatusOK, map[string]any{"items": items, "max_bytes": managed.MaxUpdateArtifactBytes, "max_releases": maxUpdateReleases, "max_total_bytes": maxUpdateStorage})
+		for index := range items {
+			items[index].PublisherVerified = items[index].Publisher.Matches(items[index].UpdateRelease) && s.verifyUpdatePublisher(items[index].Publisher) == nil
+		}
+		respond(w, http.StatusOK, map[string]any{"items": items, "max_bytes": managed.MaxUpdateArtifactBytes, "max_releases": maxUpdateReleases, "max_total_bytes": maxUpdateStorage, "publisher_keys": s.updatePublisherIDs()})
+		return
+	}
+	publisher, err := s.readUpdatePublisherHeader(r)
+	if err != nil {
+		respond(w, http.StatusBadRequest, map[string]string{"error": "내장 발행자 공개키로 검증할 수 있는 서명된 릴리스 manifest가 필요합니다"})
 		return
 	}
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -42,6 +50,10 @@ func (s *Server) consoleUpdateReleases(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.ContentLength > managed.MaxUpdateArtifactBytes {
 		respond(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "RPM 파일이 64 MiB 제한을 초과했습니다"})
+		return
+	}
+	if r.ContentLength >= 0 && r.ContentLength != publisher.Manifest.Size {
+		respond(w, http.StatusBadRequest, map[string]string{"error": "RPM 크기가 서명된 manifest와 일치하지 않습니다"})
 		return
 	}
 	select {
@@ -61,7 +73,7 @@ func (s *Server) consoleUpdateReleases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, managed.MaxUpdateArtifactBytes)
-	release, duplicate, err := s.publishUpdateRelease(r.Context(), r.Body, actor)
+	release, duplicate, err := s.publishUpdateRelease(r.Context(), r.Body, actor, publisher)
 	if err != nil {
 		var maximum *http.MaxBytesError
 		if errors.As(err, &maximum) {
@@ -150,6 +162,11 @@ func (s *Server) consoleUpdatePreview(w http.ResponseWriter, r *http.Request) {
 		s.consoleError(w, "update preview", err)
 		return
 	}
+	if err = s.verifyUpdatePublisher(release.Publisher); err != nil {
+		s.consoleError(w, "update publisher", err)
+		return
+	}
+	release.PublisherVerified = true
 	if err = tx.Commit(); err != nil {
 		s.consoleError(w, "update preview commit", err)
 		return

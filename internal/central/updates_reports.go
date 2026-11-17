@@ -79,6 +79,9 @@ func (s *Server) recordUpdateReport(ctx context.Context, agent authenticatedAgen
 		return ErrConflict
 	}
 	if report.State == "succeeded" {
+		if report.CollectionCheck != "verified" && report.CollectionCheck != "not_applicable" {
+			return ErrConflict
+		}
 		if job.state != "installing" || len(job.authorization) == 0 {
 			return ErrConflict
 		}

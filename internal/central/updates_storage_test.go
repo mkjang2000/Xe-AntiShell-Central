@@ -19,17 +19,20 @@ func (updateZeroReader) Read(buffer []byte) (int, error) { clear(buffer); return
 
 func TestUpdateStorageRejectsOversizeAndCatalogQuota(t *testing.T) {
 	f := updateFixture(t)
-	if _, _, err := f.server.publishUpdateRelease(context.Background(), io.LimitReader(updateZeroReader{}, managed.MaxUpdateArtifactBytes+1), "admin"); !errors.Is(err, ErrInvalid) {
+	large := f.signedUpdateBody(t, []byte("synthetic"), updatePackage(24))
+	large.Manifest.Size = managed.MaxUpdateArtifactBytes
+	large, _ = managed.SignReleaseManifest(large.Manifest, large.KeyID, f.updatePublisherPrivate)
+	if _, _, err := f.server.publishUpdateRelease(context.Background(), io.LimitReader(updateZeroReader{}, managed.MaxUpdateArtifactBytes+1), "admin", large); !errors.Is(err, ErrInvalid) {
 		t.Fatal("oversize RPM accepted")
 	}
-	if _, _, err := f.server.publishUpdateRelease(context.Background(), bytes.NewReader(nil), "admin"); !errors.Is(err, ErrInvalid) {
+	if _, _, err := f.server.publishUpdateRelease(context.Background(), bytes.NewReader(nil), "admin", f.signedUpdateBody(t, []byte("synthetic"), updatePackage(24))); !errors.Is(err, ErrInvalid) {
 		t.Fatal("empty RPM accepted")
 	}
 	for n := 0; n < maxUpdateReleases; n++ {
 		f.updateRelease(t, n+1)
 	}
 	body, _ := json.Marshal(updatePackage(100))
-	if _, _, err := f.server.publishUpdateRelease(context.Background(), bytes.NewReader(body), "admin"); !errors.Is(err, ErrConflict) {
+	if _, _, err := f.server.publishUpdateRelease(context.Background(), bytes.NewReader(body), "admin", f.signedUpdateBody(t, body, updatePackage(100))); !errors.Is(err, ErrConflict) {
 		t.Fatal("catalog release cap exceeded")
 	}
 	entries, _ := os.ReadDir(filepath.Join(f.directory, "update-blobs/staging"))
@@ -44,7 +47,7 @@ func TestUpdateStorageDatabaseFailureAndCorruptionStayInvisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := json.Marshal(updatePackage(24))
-	if _, _, err := f.server.publishUpdateRelease(context.Background(), bytes.NewReader(body), "admin"); err == nil {
+	if _, _, err := f.server.publishUpdateRelease(context.Background(), bytes.NewReader(body), "admin", f.signedUpdateBody(t, body, updatePackage(24))); err == nil {
 		t.Fatal("database failure accepted")
 	}
 	items, err := listUpdateReleases(context.Background(), f.store.db)
@@ -59,7 +62,7 @@ func TestUpdateStorageDatabaseFailureAndCorruptionStayInvisible(t *testing.T) {
 	if err = os.WriteFile(path, bytes.Repeat([]byte("z"), int(release.Size)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err = f.server.publishUpdateRelease(context.Background(), bytes.NewReader(body), "admin"); !errors.Is(err, ErrConflict) {
+	if _, _, err = f.server.publishUpdateRelease(context.Background(), bytes.NewReader(body), "admin", f.signedUpdateBody(t, body, updatePackage(24))); !errors.Is(err, ErrConflict) {
 		t.Fatal("corrupt duplicate blob reported valid")
 	}
 	if err = os.Remove(path); err != nil {

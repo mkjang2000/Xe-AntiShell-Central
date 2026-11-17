@@ -89,11 +89,12 @@ func TestUpdateCannotSucceedOrInstallWithoutClaim(t *testing.T) {
 	f.createUpdate(t, release, agent.ID)
 	plan := f.offerUpdate(t, agent)
 	pack := release.Package
-	report := managed.UpdateReport{ProtocolVersion: 1, JobID: plan.Plan.JobID, EnrollmentID: agent.EnrollmentID, Revision: 1, Sequence: 1, State: "succeeded", InstalledPackage: &pack, RunningVersion: updateVersion(pack), ObservedAt: f.server.now()}
+	report := managed.UpdateReport{ProtocolVersion: managed.UpdateProtocolVersion, JobID: plan.Plan.JobID, EnrollmentID: agent.EnrollmentID, Revision: 1, Sequence: 1, State: "succeeded", InstalledPackage: &pack, RunningVersion: updateVersion(pack), ObservedAt: f.server.now(), CollectionCheck: "verified"}
 	if err := f.server.recordUpdateReport(context.Background(), agent, report); !errors.Is(err, ErrConflict) {
 		t.Fatal("success without authorization")
 	}
 	report.State = "installing"
+	report.CollectionCheck = ""
 	report.InstalledPackage = nil
 	if err := f.server.recordUpdateReport(context.Background(), agent, report); !errors.Is(err, ErrConflict) {
 		t.Fatal("installing without authorization")

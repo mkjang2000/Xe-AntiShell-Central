@@ -7,14 +7,12 @@ import (
 	"io"
 	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 )
 
-var updateELPattern = regexp.MustCompile(`(?:^|\.)el(7|8|9|10)(?:[._]|$)`)
 var updateDigestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 type rpmQueryOutput struct{ body bytes.Buffer }
@@ -44,20 +42,11 @@ func inspectUpdateRPM(ctx context.Context, filename string) (managed.RPMPackage,
 }
 
 func parseUpdateRPMQuery(output string) (managed.RPMPackage, string, error) {
-	fields := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
-	if len(fields) != 5 {
-		return managed.RPMPackage{}, "", ErrInvalid
-	}
-	epoch, err := strconv.ParseUint(fields[1], 10, 32)
+	pack, major, err := managed.ParseRPMMetadata([]byte(output))
 	if err != nil {
 		return managed.RPMPackage{}, "", ErrInvalid
 	}
-	pack := managed.RPMPackage{Name: fields[0], Epoch: epoch, Version: fields[2], Release: fields[3], Arch: fields[4]}
-	match := updateELPattern.FindStringSubmatch(pack.Release)
-	if pack.Validate() != nil || len(match) != 2 {
-		return managed.RPMPackage{}, "", ErrInvalid
-	}
-	return pack, match[1], nil
+	return pack, major, nil
 }
 
 // RPM compares epoch, then version and release using numeric/alphabetic runs.

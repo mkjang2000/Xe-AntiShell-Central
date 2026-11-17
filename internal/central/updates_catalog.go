@@ -58,8 +58,11 @@ func listUpdateReleases(ctx context.Context, q updateReader) ([]ConsoleUpdateRel
 	return items, rows.Err()
 }
 
-func (s *Server) publishUpdateRelease(ctx context.Context, body io.Reader, actor string) (ConsoleUpdateRelease, bool, error) {
-	path, digest, size, pack, major, err := s.updateBlobs.stage(ctx, body)
+func (s *Server) publishUpdateRelease(ctx context.Context, body io.Reader, actor string, publisher managed.SignedReleaseManifest) (ConsoleUpdateRelease, bool, error) {
+	if err := s.verifyUpdatePublisher(publisher); err != nil {
+		return ConsoleUpdateRelease{}, false, err
+	}
+	path, digest, size, pack, major, err := s.updateBlobs.stage(ctx, body, publisher.Manifest)
 	if err != nil {
 		return ConsoleUpdateRelease{}, false, err
 	}
@@ -78,6 +81,10 @@ func (s *Server) publishUpdateRelease(ctx context.Context, body io.Reader, actor
 		if _, err = s.updateBlobs.publish(path, item.ID, item.Size); err != nil {
 			return item, false, err
 		}
+		if err = s.verifyUpdatePublisher(item.Publisher); err != nil {
+			return item, false, err
+		}
+		item.PublisherVerified = true
 		return item, true, nil
 	} else if !errors.Is(err, ErrNotFound) {
 		return ConsoleUpdateRelease{}, false, err
@@ -100,7 +107,7 @@ func (s *Server) publishUpdateRelease(ctx context.Context, body io.Reader, actor
 		return ConsoleUpdateRelease{}, false, err
 	}
 	now := s.now().UTC()
-	release := ConsoleUpdateRelease{UpdateRelease: managed.UpdateRelease{ID: digest, Package: pack, OSFamily: "rhel", OSMajor: major, SHA256: digest, Size: size, CreatedAt: now}, UploadedBy: actor}
+	release := ConsoleUpdateRelease{UpdateRelease: managed.UpdateRelease{ID: digest, Package: pack, OSFamily: "rhel", OSMajor: major, SHA256: digest, Size: size, CreatedAt: now, Publisher: publisher}, UploadedBy: actor, PublisherVerified: true}
 	if release.Validate() != nil {
 		return release, false, ErrInvalid
 	}

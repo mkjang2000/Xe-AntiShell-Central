@@ -43,6 +43,9 @@ func (s *Server) confirmUpdate(ctx context.Context, actor, clientID, token strin
 	if err != nil || !sameUpdateSnapshot(before, after) {
 		return "", ErrConflict
 	}
+	if err = s.verifyUpdatePublisher(release.Publisher); err != nil {
+		return "", err
+	}
 	eligible := 0
 	for _, target := range after.Targets {
 		if target.Eligible {

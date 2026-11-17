@@ -25,10 +25,11 @@ import (
 )
 
 type fixture struct {
-	store     *Store
-	material  *Material
-	server    *Server
-	directory string
+	store                  *Store
+	material               *Material
+	server                 *Server
+	directory              string
+	updatePublisherPrivate ed25519.PrivateKey
 }
 
 func setup(t *testing.T) *fixture {

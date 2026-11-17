@@ -73,6 +73,15 @@ func (s *Server) desiredUpdate(ctx context.Context, agent authenticatedAgent) ([
 	if err = currentUpdateHead(ctx, tx, agent, job); err != nil {
 		return nil, err
 	}
+	if s.verifyUpdatePublisher(job.release.Publisher) != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE update_jobs SET state='failed',error_code='signature_invalid' WHERE id=? AND state IN ('queued','offered','downloading','ready')", job.id); err != nil {
+			return nil, err
+		}
+		if err = expireUpdateJobs(ctx, tx, now); err != nil {
+			return nil, err
+		}
+		return nil, tx.Commit()
+	}
 	if job.state != "queued" {
 		if updateTerminal(job.state) || job.expires <= now.UnixNano() {
 			return nil, tx.Commit()

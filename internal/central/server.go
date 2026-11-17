@@ -18,12 +18,14 @@ import (
 )
 
 type Server struct {
-	store         *Store
-	material      *Material
-	logger        *slog.Logger
-	now           func() time.Time
-	enrollmentURL string
-	updateBlobs   *updateBlobStore
+	store            *Store
+	material         *Material
+	logger           *slog.Logger
+	now              func() time.Time
+	enrollmentURL    string
+	updateBlobs      *updateBlobStore
+	updatePublishers map[string]ed25519.PublicKey
+	updateGitHub     *updateGitHubClient
 }
 type authenticatedAgent struct{ ID, EnrollmentID string }
 
@@ -38,7 +40,7 @@ func NewServer(store *Store, material *Material, logger *slog.Logger) (*Server, 
 	if err != nil {
 		return nil, err
 	}
-	return &Server{store: store, material: material, logger: logger, now: time.Now, updateBlobs: blobs}, nil
+	return &Server{store: store, material: material, logger: logger, now: time.Now, updateBlobs: blobs, updatePublishers: managed.BuiltinReleasePublisherKeys(), updateGitHub: newUpdateGitHubClient()}, nil
 }
 
 func (s *Server) AgentHandler() http.Handler {

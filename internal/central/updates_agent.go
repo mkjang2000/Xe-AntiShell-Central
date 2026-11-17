@@ -76,7 +76,7 @@ func (s *Server) updateArtifact(w http.ResponseWriter, r *http.Request, agent au
 		return
 	}
 	var release managed.UpdateRelease
-	if json.Unmarshal(metadata, &release) != nil || release.Validate() != nil {
+	if json.Unmarshal(metadata, &release) != nil || release.Validate() != nil || s.verifyUpdatePublisher(release.Publisher) != nil {
 		s.apiError(w, "update artifact", ErrConflict)
 		return
 	}

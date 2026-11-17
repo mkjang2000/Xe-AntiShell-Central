@@ -81,6 +81,7 @@ func (s *Server) updateRolloutDetail(ctx context.Context, id, after string, limi
 				break
 			}
 			job.ObservedPackage = value.InstalledPackage
+			job.CollectionCheck = value.CollectionCheck
 		}
 		job.Terminal = updateTerminal(job.State)
 		job.StoppedAfterFailure = job.ErrorCode == "rollout_stopped"

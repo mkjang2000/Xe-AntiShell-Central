@@ -16,7 +16,7 @@ Linux, Go 1.22 이상, GNU make, Bash, Git, Python 3.9 이상이 필요하다.
 브라우저 스크립트 검증에는 Node.js 22 이상이 필요하며 서비스 실행에는 필요하지 않다.
 검증용 race 테스트에는 C 컴파일러도 필요하다. Go 모듈은 고정 버전으로
 다운로드하며, SQLite는 `modernc.org/sqlite`의 pure Go 드라이버를 사용한다.
-공용 계약은 `github.com/mkjang2000/Xe-AntiShell/protocol v0.1.5`에 고정한다.
+공용 계약은 `github.com/mkjang2000/Xe-AntiShell/protocol v0.2.0`에 고정한다.
 
 ```sh
 make verify
@@ -239,6 +239,17 @@ sudo sentinel-central enrollment-token \
 [Managed v1 운영 문서](devdocs/analysis/managed-v1-operations.md)를 따른다.
 
 ## 업그레이드와 데이터 보존
+
+패널의 에이전트 업데이트는 서버·그룹별 대상과 제외 사유를 먼저 확인한 뒤
+승인한다. 관리자는 내장 발행자 공개키로 검증되는 RPM·서명 manifest 파일을
+함께 등록하거나 고정 공식 GitHub 릴리스에서 가져올 수 있다. 중앙 배포 승인
+서명은 패키지 발행자 서명과 별도로 검증된다. 개인 키를 패널에 입력하지 않는다.
+운영자는 검증된 릴리스의 배포·취소를 수행하고 조회자는 진행 상태를 확인한다.
+자동 업데이트를 지원하지 않는 기존 에이전트에는 먼저 별도 설치가 필요하다.
+기본 배포는 순차 진행하며 첫 실패·만료·결과 미확인 시 남은 미시작 대상을
+중지한다. 설치 승인을 받은 작업은 취소로 중단하지 않으며, 성공에는 설치된
+RPM·실행 버전·재시작 후 수집 점검이 필요하다. 자세한 계약과 제한은
+[업데이트 설계](devdocs/plans/agent-update-backend.md)를 참고한다.
 
 중앙 RPM은 `/usr/sbin/sentinel-central`, 중앙 systemd unit 및 상태
 디렉터리만 소유한다. 에이전트 패키지를 요구하거나 에이전트 삭제 승인

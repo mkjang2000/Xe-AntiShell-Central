@@ -22,7 +22,7 @@ Xe-AntiShell-Central/
 │   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
 │   ├── history_read.go           # Separate finding/event/error/audit projections
 │   ├── agent_errors.go           # Durable deduplicated error transitions from heartbeats
-│   └── updates_*.go              # Private RPM blobs/catalog, signed snapshots, jobs/claims/reports
+│   └── updates_*.go              # Publisher-verified RPM/GitHub catalog, signed jobs/claims/reports
 ├── internal/console/              # Authentication, enforced roles, sessions and CSRF
 │   ├── accounts_store.go         # Persistent accounts, final-admin guard and account audit
 │   ├── accounts_auth.go          # Per-request identity and role authorization
@@ -32,6 +32,7 @@ Xe-AntiShell-Central/
 │       ├── accounts.css          # Account table/dialog/tooltip responsive presentation
 │       ├── accounts.test.mjs     # Dialog lifecycle, stale responses and role-help regressions
 │       ├── updates.js            # Release catalog, raw upload and guarded update dialogs
+│       ├── updates-source.js     # Public signed manifest input and fixed GitHub import
 │       ├── updates.css           # Dense light/dark update tables and dialogs
 │       └── updates.test.mjs      # Roles, transport, preview, cancellation and terminal outcomes
 ├── packaging/
@@ -73,7 +74,7 @@ Authenticated console → installation code with public CA → agent wizard → 
 
 - The shared `github.com/mkjang2000/Xe-AntiShell/protocol` module owns wire and
   cryptographic contracts; central does not import agent implementation.
-- Protocol v0.1.5 adds signed update plans/claims and independent inventory/reports,
+- Protocol v0.2.0 adds publisher-verified update plans/claims and independent inventory/reports,
   alongside optional typed execution/file/network evidence, while
   preserving managed-v1 signed policy bytes and legacy omitted-field JSON.
   Its installation-code envelopes remain compatible. Offline recovery plaintext and
@@ -114,3 +115,6 @@ Authenticated console → installation code with public CA → agent wizard → 
   releases, operators schedule exact reviewed targets, and agents request short
   install authorization only after verified download. Terminal outcomes stay
   fixed when late reports arrive, and failed campaigns stop unclaimed targets.
+- Release publisher keys are embedded public anchors independent of central policy
+  signing keys. Admins import a signed RPM/manifest pair manually or from the fixed
+  public GitHub repository; no endpoint changes trust keys or accepts arbitrary URLs.

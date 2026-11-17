@@ -43,7 +43,7 @@ func allowsAPI(role Role, method, endpoint string) bool {
 		return false
 	}
 	if method == http.MethodGet {
-		if endpoint == "/api/updates/releases" || endpoint == "/api/updates/agents" || endpoint == "/api/updates/rollouts" {
+		if endpoint == "/api/updates/releases" || endpoint == "/api/updates/agents" || endpoint == "/api/updates/rollouts" || endpoint == "/api/updates/github/releases" {
 			return true
 		}
 		parts := strings.Split(endpoint, "/")

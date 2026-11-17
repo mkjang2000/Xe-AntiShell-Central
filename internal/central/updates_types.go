@@ -13,7 +13,8 @@ const updateInstallTimeout = 10 * time.Minute
 
 type ConsoleUpdateRelease struct {
 	managed.UpdateRelease
-	UploadedBy string `json:"uploaded_by"`
+	UploadedBy        string `json:"uploaded_by"`
+	PublisherVerified bool   `json:"publisher_verified"`
 }
 
 type ConsoleUpdateAgent struct {
@@ -58,6 +59,7 @@ type ConsoleUpdateJob struct {
 	ErrorCode           string              `json:"error_code"`
 	StoppedAfterFailure bool                `json:"stopped_after_failure"`
 	LateReport          bool                `json:"late_report"`
+	CollectionCheck     string              `json:"collection_check"`
 	ExpiresAt           time.Time           `json:"expires_at"`
 }
 

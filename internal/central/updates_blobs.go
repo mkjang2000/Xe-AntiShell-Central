@@ -101,7 +101,7 @@ func (b *updateBlobStore) open(id string, size int64) (*os.File, error) {
 	return file, nil
 }
 
-func (b *updateBlobStore) stage(ctx context.Context, body io.Reader) (string, string, int64, managed.RPMPackage, string, error) {
+func (b *updateBlobStore) stage(ctx context.Context, body io.Reader, manifest managed.ReleaseManifest) (string, string, int64, managed.RPMPackage, string, error) {
 	file, err := os.CreateTemp(filepath.Join(b.root, "staging"), "upload-")
 	if err != nil {
 		return "", "", 0, managed.RPMPackage{}, "", err
@@ -115,11 +115,11 @@ func (b *updateBlobStore) stage(ctx context.Context, body io.Reader) (string, st
 		}
 	}()
 	hash := sha256.New()
-	size, err := io.Copy(io.MultiWriter(file, hash), io.LimitReader(body, managed.MaxUpdateArtifactBytes+1))
+	size, err := io.Copy(io.MultiWriter(file, hash), io.LimitReader(body, manifest.Size+1))
 	if err != nil {
 		return "", "", 0, managed.RPMPackage{}, "", err
 	}
-	if size < 1 || size > managed.MaxUpdateArtifactBytes {
+	if size != manifest.Size || hex.EncodeToString(hash.Sum(nil)) != manifest.SHA256 {
 		return "", "", 0, managed.RPMPackage{}, "", ErrInvalid
 	}
 	if err = file.Sync(); err != nil {
@@ -131,6 +131,9 @@ func (b *updateBlobStore) stage(ctx context.Context, body io.Reader) (string, st
 	pack, major, err := b.inspect(ctx, path)
 	if err != nil {
 		return "", "", 0, managed.RPMPackage{}, "", err
+	}
+	if pack != manifest.Package || major != manifest.OSMajor || manifest.OSFamily != "rhel" {
+		return "", "", 0, managed.RPMPackage{}, "", ErrInvalid
 	}
 	keep = true
 	return path, hex.EncodeToString(hash.Sum(nil)), size, pack, major, nil

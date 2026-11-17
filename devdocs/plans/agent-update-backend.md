@@ -1,7 +1,8 @@
 # Purpose and Implementation
 
 The central backend manages immutable agent RPM releases and explicit per-server
-or group rollouts. Shared protocol v0.1.5 owns signed plans, install authorization,
+or group rollouts. Shared protocol v0.2.0 owns independent publisher manifests,
+signed deployment plans, install authorization,
 separate inventory and durable reports. UI contracts are in
 [agent-update-api.md](agent-update-api.md). No operational deployment belongs to
 this implementation phase.
@@ -11,6 +12,8 @@ this implementation phase.
 - `updates_blobs.go`, `updates_rpm.go`, `updates_catalog.go`: private streaming
   staging, SHA256 publication, fixed unprivileged RPM metadata query, catalog
   quota and safe deletion. RPM payloads are never extracted or executed centrally.
+- `updates_publisher.go`, `updates_github*.go`: immutable publisher trust,
+  signed manual upload and fixed-repository public release discovery/import.
 - `updates_inventory.go`, `updates_schema.go`: additive enrollment-bound inventory,
   revision heads and timeout/failure propagation. Legacy database version 2 and
   heartbeat bytes remain unchanged.
@@ -28,8 +31,25 @@ RPM arch x86_64 and EL major 7–10 with a matching .el marker (including point
 release suffixes). The native RPM query has fixed arguments, no shell, private
 0600 service-owned input, minimal environment, ten-second context and 4096-byte
 output cap. It does not install or run scriptlets. Agent-side inspection remains
-independent. Upload authorizes privileged code deployment; a hash/signature binds
-bytes and authorization rather than asserting publisher provenance.
+independent. The embedded publisher key authenticates the RPM's manifest; the
+central policy key separately authorizes its deployment to an enrollment. Neither
+trust domain can substitute for the other. Publisher private keys are never read,
+stored or configured by central, and browser input cannot add trusted public keys.
+
+Manual upload requires a signed public manifest header before the body is read.
+The same workflow serves GitHub import: fixed repository metadata, bounded public
+manifest fetch, embedded-key verification, exact same-release RPM asset, signed
+size/hash check, then native header agreement. Hash verification precedes native
+RPM metadata parsing. Catalog listings expose public provenance and verified state;
+preview, confirmation, dispatch and artifact authorization recheck trust.
+
+GitHub requests use HTTPS only with an exact four-host allowlist, normal TLS
+verification, no proxy/credentials, three bounded redirects and public DNS answers
+pinned to the dial address. Mixed public/private answers fail. Untrusted upstream
+asset URLs are ignored; initial URLs are constructed from the fixed repository,
+validated tag and basename. Metadata is bounded to 2 MiB and signed manifests to
+16 KiB. Responses/errors never include upstream bodies or signed redirect URLs.
+Catalog retrieval is explicit and cached for five minutes; import requires admin.
 
 Raw application/x-rpm uploads (octet-stream also accepted) have a 64 MiB bound and
 one admission slot. Only that exact authenticated/CSRF-protected route bypasses
@@ -79,7 +99,8 @@ lease. Cancellation and first campaign failure can stop only unclaimed jobs.
 Normal reports have sequential durable sequence numbers and immutable canonical
 retry bytes. Exact retries ACK; same-sequence changed bodies and backward progress
 conflict. Success requires server installing state, an issued authorization and
-exact target package plus the shared epoch-aware running version. Source times
+exact target package plus the shared epoch-aware running version and a verified
+post-restart collection check (or explicitly not_applicable baseline). Source times
 are informational; receipt time drives server freshness.
 
 An installing job without a result for ten minutes becomes failed/interrupted,
@@ -99,6 +120,12 @@ package changes, mixed eligible/excluded targets, idempotent creation/reports,
 late ready retries after claim, offered/installation timeouts, first-failure
 stop and old late history beside a newer job. Separate console tests exercise
 roles, authentication/CSRF before reading uploads and retained ordinary body caps.
+Publisher tests reject central-key forgery, unknown/oversize manifest fields and
+missing signatures before reading RPM input. Changed hashes never reach the
+native RPM query. GitHub tests cover fixed source, catalog filtering/cache,
+private/mixed DNS, numeric-address dial pinning, redirect bounds, safe errors,
+signature-before-download and exact duplicate import. Collection checks cannot
+be omitted or failed when reporting success.
 End-to-end synthetic HTTP tests use browser authentication plus mTLS agent APIs.
 Further parent integration adds the dedicated UI and agent/helper workflows, then
 full race/vet/script/UI/static/RPM checks before any operational deployment.

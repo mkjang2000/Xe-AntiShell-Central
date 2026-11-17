@@ -43,6 +43,8 @@ func (s *Server) ConsoleHandler() http.Handler {
 	mux.HandleFunc("GET /api/updates/rollouts", s.consoleUpdateRollouts)
 	mux.HandleFunc("GET /api/updates/rollouts/{id}", s.consoleUpdateRollout)
 	mux.HandleFunc("POST /api/updates/rollouts/{id}/cancel", s.consoleCancelUpdate)
+	mux.HandleFunc("GET /api/updates/github/releases", s.consoleUpdateGitHubReleases)
+	mux.HandleFunc("POST /api/updates/github/import", s.consoleImportUpdateGitHub)
 	return secureHeaders(mux)
 }
 
