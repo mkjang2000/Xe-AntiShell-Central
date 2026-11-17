@@ -79,7 +79,8 @@ Authenticated console → installation code with public CA → agent wizard → 
 
 - The shared `github.com/mkjang2000/Xe-AntiShell/protocol` module owns wire and
   cryptographic contracts; central does not import agent implementation.
-- Protocol v0.2.0 adds publisher-verified update plans/claims and independent inventory/reports,
+- Protocol v0.3.0 adds optional privilege policy fields and paired credential evidence
+  with exact uint64 task identity strings, on top of publisher-verified update plans/claims and independent inventory/reports,
   alongside optional typed execution/file/network evidence, while
   preserving managed-v1 signed policy bytes and legacy omitted-field JSON.
   Its installation-code envelopes remain compatible. Offline recovery plaintext and

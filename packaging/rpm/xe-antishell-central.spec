@@ -58,6 +58,7 @@ getent passwd xe-antishell-central >/dev/null || useradd -r -g xe-antishell-cent
 - Validate paired credential evidence and distinguish root recovery and capability activation
 - Preserve exact uint64 task identity strings in credential history details
 - Keep all new privilege findings detection-only without changing agent termination settings
+- Pin published shared protocol v0.3.0 with no workspace build dependency
 
 * Tue Nov 17 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-12
 - Manage bounded immutable agent RPM releases and explicit server/group update rollouts

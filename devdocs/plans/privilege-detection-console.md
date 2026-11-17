@@ -77,8 +77,15 @@ script checks and sixteen source-check tests passed. Source inspection checked
 173 Git candidates with no issues, and diff checks passed. This is isolated
 validation, not production deployment or actual kernel sensor proof.
 
-The release dependency pin must move to the published shared protocol v0.3.0
-before a normal GOWORK=off package build; the local workspace is not shipped.
+The release pins the published shared protocol v0.3.0. The dependency's public
+tag resolves to commit `a24f6984406da9c74a0f7ab75d78ea5a41af268d`; the local
+workspace is not shipped. Release validation runs with `GOWORK=off`.
+
+After the public tag was available, `go mod verify` and the complete
+`GOWORK=off make verify` suite passed against the pinned module: source/privacy,
+format, installer/RPM archive mocks, sixteen Python checks, seven JavaScript
+files, vet, all three race-tested Go packages and the static build. No module
+replacement or local workspace is required.
 
 The RPM release 13 spec is prepared. No production service restart or package
 installation is implied by the version change. See

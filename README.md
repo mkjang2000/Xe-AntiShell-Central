@@ -16,7 +16,7 @@ Linux, Go 1.22 이상, GNU make, Bash, Git, Python 3.9 이상이 필요하다.
 브라우저 스크립트 검증에는 Node.js 22 이상이 필요하며 서비스 실행에는 필요하지 않다.
 검증용 race 테스트에는 C 컴파일러도 필요하다. Go 모듈은 고정 버전으로
 다운로드하며, SQLite는 `modernc.org/sqlite`의 pure Go 드라이버를 사용한다.
-공용 계약은 `github.com/mkjang2000/Xe-AntiShell/protocol v0.2.0`에 고정한다.
+공용 계약은 `github.com/mkjang2000/Xe-AntiShell/protocol v0.3.0`에 고정한다.
 
 ```sh
 make verify
