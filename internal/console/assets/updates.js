@@ -5,7 +5,7 @@
 (function (C) {
   const base="/api/updates";
   const phases={queued:["대기","neutral"],offered:["업데이트 요청 제공","blue"],downloading:["다운로드 중","blue"],ready:["설치 준비","blue"],installing:["설치 승인·진행 중","warning"],succeeded:["설치 결과 확인","good"],failed:["오류·결과 확인 필요","danger"],cancelled:["취소됨","neutral"],expired:["기간 만료","warning"]};
-  const reasons={unsupported:"자동 업데이트 미지원 · 최초 1회 수동 업데이트 필요",disabled:"서버의 자동 업데이트 설정이 꺼져 있음",inventory_stale:"설치 상태 보고가 없거나 오래됨",platform_mismatch:"운영체제 또는 아키텍처 불일치",already_current:"이미 목표 RPM이 설치됨",downgrade:"현재 RPM보다 이전 버전",busy:"다른 업데이트 진행 중",revoked:"등록이 해지됨",not_found:"등록 대상을 찾을 수 없음"};
+  const reasons={bootstrap_required:"지원 보고 없음 · 최초 1회 수동 업데이트 필요",revision_exhausted:"업데이트 리비전 한도 도달 · 운영자 확인 필요",unsupported:"자동 업데이트 미지원 · 최초 1회 수동 업데이트 필요",disabled:"서버의 자동 업데이트 설정이 꺼져 있음",inventory_stale:"설치 상태 보고가 없거나 오래됨",platform_mismatch:"운영체제 또는 아키텍처 불일치",already_current:"이미 목표 RPM이 설치됨",downgrade:"현재 RPM보다 이전 버전",busy:"다른 업데이트 진행 중",revoked:"등록이 해지됨",not_found:"등록 대상을 찾을 수 없음"};
   const state={releases:[],agents:[],rollouts:[],tab:"releases",generation:0,inventoryGeneration:0,rolloutGeneration:0,agentCursors:[""],agentPage:0,agentNext:"",agentTotal:0,rolloutCursors:[""],rolloutPage:0,rolloutNext:"",selectedAgents:new Set(),selectedGroups:new Set(),publisherKeys:[],preview:null,selectionRevision:0,requestID:"",upload:null,role:"",poll:null,detailGeneration:0,detailCursor:"",detailCursors:[""],detailPage:0};
   let panel, root;
   const el=(tag,name="",text)=>C.el(tag,name,text);

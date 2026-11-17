@@ -118,6 +118,15 @@ test("preview shows exclusions, requires root confirmation and keeps request ID 
   assert.match(h.id("updateDialogTitle").textContent,/배포 상세/);assert.match(h.id("updateDialog").textContent,/보고 지연/);assert.doesNotMatch(h.id("updateDialog").textContent,/설치 성공/);
 });
 
+test("preview explains bootstrap and revision exhaustion exclusions",async()=>{
+  for(const [code,explanation] of [["bootstrap_required",/지원 보고 없음 · 최초 1회 수동 업데이트 필요/],["revision_exhausted",/업데이트 리비전 한도 도달 · 운영자 확인 필요/]]){
+    const h=harness("operator");h.preview.targets[1].exclude_reason=code;
+    await h.C.loadUpdates();await h.click("updatePrepareOpen");h.id("update-group-web").checked=true;await h.id("update-group-web").emit("change");await h.click("updatePreviewSubmit");
+    assert.match(h.id("updatePreview").textContent,explanation);
+    assert.equal(h.id("updateDeploySubmit").disabled,true);
+  }
+});
+
 test("late preview cannot approve changed selections or a newly reopened dialog",async()=>{
   const h=harness();await h.C.loadUpdates();await h.click("updatePrepareOpen");h.id("update-target-server-a").checked=true;await h.id("update-target-server-a").emit("change");
   let resolve;h.mutate(()=>new Promise(done=>{resolve=done;}));const pending=h.id("updatePreviewSubmit").emit("click");await settle();

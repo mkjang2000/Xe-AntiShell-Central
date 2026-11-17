@@ -3,7 +3,7 @@
 .update-actions { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
 .update-table-scroll { border: 1px solid var(--line); margin: 12px 0; }
 .update-table th, .update-table td { padding: 9px 11px; }
-.update-table td { max-width: 320px; white-space: normal; overflow-wrap: anywhere; }
+.update-table td { min-width: 110px; max-width: 320px; white-space: normal; overflow-wrap: anywhere; }
 .update-table th { white-space: nowrap; }
 .update-table td:first-child { min-width: 150px; font-weight: 600; }
 .update-table .update-actions { min-width: 130px; }
