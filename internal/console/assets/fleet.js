@@ -105,7 +105,7 @@
     container.append(heading("기능 구현·실동작 상태"));
     container.append(C.el("p", "panel-note", "구현 여부·환경 지원과 실제 동작 보고를 구분합니다. 장치 진단이 곧 탐지·차단 기능의 동작을 의미하지 않습니다."));
     const buildRows = list => list.map(([name, value]) => {
-      const item = C.object(value), fresh = C.connection(agent).key === "online" && C.fresh(item.verified_at || report.probed_at, 300000), presentation = C.capability(name, item, fresh);
+      const item = C.object(value), presentation = C.capability(name, item, C.capabilityFresh(name, item, agent));
       const identity = C.el("div"); identity.append(C.el("strong", "", presentation.title));
       const impl = C.tag(presentation.implementation, presentation.implementation === "개발 예정" ? "pending" : "neutral");
       const support = {supported:"지원 조건 확인",limited:"일부 조건 미확인",unsupported:"지원 안 함",error:"진단 오류"};

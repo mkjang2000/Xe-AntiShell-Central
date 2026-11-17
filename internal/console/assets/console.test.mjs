@@ -106,6 +106,20 @@ test("active eBPF diagnosis describes only the observed process execution hooks"
   }
 });
 
+test("only active process observations require a recent evidence timestamp beyond the heartbeat",()=>{
+  const {C}=model(),online=agent(),old="2026-11-17T02:00:00Z";
+  for(const [name,runtime_state] of [["host.platform","available"],["kernel.btf","available"],["kernel.cgroup","available"],["collector.audit","inactive"],["observation.process_exec","unverified"],["collector.tetragon","error"],["response.terminate","available"],["response.terminate","active"]]){
+    assert.equal(C.capabilityFresh(name,{runtime_state,verified_at:old},online),true);
+  }
+  for(const name of ["collector.tetragon","collector.audit","observation.process_exec","observation.process_lineage","kernel.ebpf"]){
+    for(const verified_at of [undefined,"invalid",old,"2026-11-17T02:54:59Z"]){
+      assert.equal(C.capabilityFresh(name,{runtime_state:"active",verified_at},online),false);
+    }
+    assert.equal(C.capabilityFresh(name,{runtime_state:"active",verified_at:"2026-11-17T02:55:00Z"},online),true);
+    assert.equal(C.capabilityFresh(name,{runtime_state:"active",verified_at:"2026-11-17T02:59:55Z"},agent({heartbeat:{sent_at:old}})),false);
+  }
+});
+
 test("missing metrics remain unknown while observed zero remains zero",()=>{
   const {C}=model();
   assert.equal(C.percent(null),"미확인");assert.equal(C.bytes(undefined),"미확인");assert.equal(C.rate(null),"미확인");
@@ -205,6 +219,30 @@ test("fleet shows live collection separately from passive diagnosis and preserve
   assert.match(text(row.children[3]),new RegExp(`실동작 확인: ${C.time(report.capabilities["collector.tetragon"].verified_at)}`));
   const raw=nodes.find(node=>node.tagName==="details"&&node.children[0].textContent==="기술 보고 원문 보기");
   assert.notEqual(raw.open,true);assert.deepEqual(JSON.parse(raw.children[1].textContent),report);
+});
+test("fresh fleet snapshots retain static and inactive states while active evidence expires separately",()=>{
+  const {C,context}=appHarness();vm.runInContext(source("fleet.js"),context);
+  const old="2026-11-17T02:00:00Z",cap=(state,runtime_state,extra={})=>({state,implementation:"implemented",runtime_state,...extra});
+  const report={probed_at:old,capabilities:{
+    "host.platform":cap("supported","available"),"kernel.btf":cap("supported","available"),"kernel.cgroup":cap("supported","available"),
+    "collector.audit":cap("limited","inactive"),"response.terminate":cap("supported","available"),
+    "collector.tetragon":cap("limited","active",{verified_at:old}),"observation.process_exec":cap("limited","active"),
+    "observation.process_lineage":cap("limited","unverified"),"kernel.ebpf":cap("limited","error")
+  }},before=structuredClone(report);
+  const current=agent({heartbeat:{sent_at:"2026-11-17T02:59:50Z",status:{capability_report:report}}});
+  C.state.agents=[current];C.selectedAgent="web-01";C.renderAgentDetail(false);
+  const text=node=>typeof node==="string"?node:node.textContent+node.children.map(text).join("");
+  const rowFor=name=>C.id("agentDetailBody").querySelectorAll("*").find(node=>node.tagName==="tr"&&text(node.children[0])===C.capabilityNames[name]);
+  for(const [name,label] of [["host.platform","환경 조건 확인"],["kernel.btf","환경 조건 확인"],["kernel.cgroup","환경 조건 확인"],["collector.audit","사용 안 함"],["response.terminate","자동 종료 꺼짐"],["collector.tetragon","최신 상태 미확인"],["observation.process_exec","최신 상태 미확인"],["observation.process_lineage","동작 미확인"],["kernel.ebpf","확인 오류"]]){
+    assert.equal(rowFor(name).children[2].children[0].textContent,label);
+  }
+  assert.ok(text(rowFor("host.platform").children[3]).includes(`진단 시각: ${C.time(old)}`));
+  const raw=C.id("agentDetailBody").querySelectorAll("*").find(node=>node.tagName==="details"&&node.children[0].textContent==="기술 보고 원문 보기");
+  assert.deepEqual(JSON.parse(raw.children[1].textContent),before);assert.deepEqual(report,before);
+  current.heartbeat.status.capability_report={...report,probed_at:"2026-11-17T02:59:55Z"};C.renderAgentDetail(false);
+  for(const name of ["collector.tetragon","observation.process_exec"])assert.equal(rowFor(name).children[2].children[0].textContent,"최신 상태 미확인");
+  current.heartbeat.sent_at=old;C.renderAgentDetail(false);
+  for(const name of Object.keys(report.capabilities))assert.equal(rowFor(name).children[2].children[0].textContent,"최신 상태 미확인");
 });
 test("closing issuance dialog clears secret synchronously before native close event",()=>{
   const document={nodes:{},body:{dataset:{page:"console"}},activeElement:null,title:"",createElement(tag){return new FakeNode(tag,this);}};

@@ -84,6 +84,12 @@
     "integrity.tpm": "TPM 장치 진단", "observation.file": "파일 활동 감시", "observation.network": "네트워크 활동 감시",
     "observation.credential_change": "권한 변경 감시"
   };
+  C.capabilityFresh = (name, value, agent) => {
+    if (C.connection(agent).key !== "online") return false;
+    const item = C.object(value);
+    const observed = Object.hasOwn(C.capabilityNames, name) && (name.startsWith("collector.") || name.startsWith("observation.") || name === "kernel.ebpf");
+    return item.runtime_state !== "active" || !observed || C.fresh(item.verified_at, 300000);
+  };
   C.capability = (name, value, fresh) => {
     const item = C.object(value);
     const result = {name, title: C.capabilityNames[name] || "추가 진단 항목", implementation: "미확인", label: "미확인", tone: "neutral", note: "실동작을 확인할 보고가 없습니다."};
