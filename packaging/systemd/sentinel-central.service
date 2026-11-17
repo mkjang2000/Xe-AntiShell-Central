@@ -1,0 +1,28 @@
+[Unit]
+Description=Xe-AntiShell central management service
+After=network.target local-fs.target
+ConditionPathExists=/var/lib/xe-antishell-central/state.json
+
+[Service]
+Type=simple
+User=xe-antishell-central
+Group=xe-antishell-central
+StateDirectory=xe-antishell-central
+StateDirectoryMode=0700
+ExecStart=/usr/sbin/sentinel-central serve --state-dir /var/lib/xe-antishell-central --listen 127.0.0.1:9443 --admin-listen 127.0.0.1:9444
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/xe-antishell-central
+
+[Install]
+WantedBy=multi-user.target

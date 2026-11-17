@@ -1,0 +1,55 @@
+Name:           xe-antishell-central
+Version:        0.1.0
+Release:        1%{?dist}
+Summary:        Independent Xe-AntiShell central management service
+License:        MIT AND Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND BSD-1-Clause AND SunPro
+URL:            https://github.com/mkjang2000/Xe-AntiShell-Central
+Source0:        %{name}-%{version}.tar.gz
+BuildRequires:  golang >= 1.22
+BuildRequires:  make
+BuildRequires:  systemd
+Requires(pre):  shadow-utils
+
+%global debug_package %{nil}
+
+%description
+Xe-AntiShell-Central provides authenticated agent enrollment, mTLS event
+delivery, signed policy distribution and a loopback operator API. It is
+independent of the Xe-AntiShell host agent package.
+
+%prep
+%autosetup
+
+%build
+GOTOOLCHAIN=local GOWORK=off %{__make} static
+
+%install
+install -D -m 0755 build/sentinel-central %{buildroot}%{_sbindir}/sentinel-central
+install -D -m 0644 packaging/systemd/sentinel-central.service %{buildroot}%{_unitdir}/sentinel-central.service
+install -d -m 0700 %{buildroot}%{_localstatedir}/lib/xe-antishell-central
+
+%files
+%doc README.md
+%license LICENSE THIRD_PARTY_NOTICES.md third_party/licenses
+%{_sbindir}/sentinel-central
+%{_unitdir}/sentinel-central.service
+# Preserve the legacy root-owned directory; systemd StateDirectory sets runtime ownership.
+%dir %attr(0700,root,root) %{_localstatedir}/lib/xe-antishell-central
+
+%pre
+getent group xe-antishell-central >/dev/null || groupadd -r xe-antishell-central
+getent passwd xe-antishell-central >/dev/null || useradd -r -g xe-antishell-central -d /var/lib/xe-antishell-central -s /sbin/nologin -c "Xe-AntiShell central server" xe-antishell-central
+
+%post
+%systemd_post sentinel-central.service
+
+%preun
+%systemd_preun sentinel-central.service
+
+%postun
+%systemd_postun_with_restart sentinel-central.service
+
+%changelog
+* Tue Nov 17 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-1
+- Separate the central binary, dedicated account, service and RPM from the agent
+- Preserve existing PKI, policy, enrollment and database paths without initialization

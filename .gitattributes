@@ -1,0 +1,15 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.go text eol=lf
+*.py text eol=lf
+# Markdown permits trailing spaces for explicit line breaks.
+*.md text eol=lf whitespace=-blank-at-eol
+*.yaml text eol=lf
+*.yml text eol=lf
+*.sql text eol=lf
+*.json text eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+# Preserve upstream license texts verbatim, including final blank lines.
+third_party/licenses/*.txt whitespace=-blank-at-eof
