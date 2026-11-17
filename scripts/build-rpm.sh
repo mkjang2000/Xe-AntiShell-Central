@@ -76,7 +76,7 @@ build_source_paths() (
     [[ ! -L "$path" ]] || { build_fail "Source symlink is not allowed: $path"; return 1; }
     [[ ! -f "$path" ]] || printf '%s\0' "$path"
   done
-  for source_dir in cmd/sentinel-central internal/central scripts devdocs/plans devdocs/reviews .github/workflows third_party/licenses; do
+  for source_dir in cmd/sentinel-central internal/central internal/console scripts devdocs/plans devdocs/reviews .github/workflows third_party/licenses; do
     [[ ! -L "$source_dir" ]] || { build_fail "Source directory symlink is not allowed: $source_dir"; return 1; }
     [[ -d "$source_dir" ]] || continue
     if [[ -n $(find "$source_dir" -type l -print -quit) ]]; then
@@ -84,6 +84,7 @@ build_source_paths() (
     fi
     case "$source_dir" in
       cmd/sentinel-central|internal/central) find "$source_dir" -path '*/.*' -prune -o -type f \( -name '*.go' -o -name '*.sql' \) -print0 ;;
+      internal/console) find "$source_dir" -path '*/.*' -prune -o -type f \( -name '*.go' -o -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.mjs' \) -print0 ;;
       scripts) find "$source_dir" -path '*/.*' -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -print0 ;;
       .github/workflows) find "$source_dir" -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 ;;
       devdocs/*) find "$source_dir" -type f -name '*.md' -print0 ;;

@@ -122,6 +122,7 @@ main() (
   else
     printf 'Central installed without initialization. For a new server, run explicitly:\n'
     printf '  sentinel-central init --state-dir /var/lib/xe-antishell-central --hosts localhost,127.0.0.1,::1\n'
+    printf '  sentinel-central init-panel --state-dir /var/lib/xe-antishell-central\n'
     printf '  systemctl enable --now sentinel-central.service\n'
   fi
 )

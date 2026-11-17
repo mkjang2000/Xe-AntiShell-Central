@@ -3,7 +3,7 @@
 ## Overview
 
 - Project Name: Xe-AntiShell-Central
-- Purpose: Independent central enrollment, mTLS delivery, signed policy and operator API
+- Purpose: Central fleet console, enrollment, mTLS delivery and signed policy administration
 - Repository: https://github.com/mkjang2000/Xe-AntiShell-Central
 - Language / Runtime: Go 1.22+, Linux
 - Package Manager: Go modules
@@ -18,6 +18,8 @@
 Xe-AntiShell-Central/
 ├── cmd/sentinel-central/          # Thin init/token/server CLI
 ├── internal/central/              # PKI, SQLite, agent and operator HTTP APIs
+├── internal/console/              # Administrator auth, sessions, CSRF and HTTP wrapper
+│   └── assets/                    # Embedded Korean console, feature modules and JS tests
 ├── packaging/
 │   ├── rpm/xe-antishell-central.spec
 │   ├── systemd/sentinel-central.service
@@ -48,6 +50,7 @@ Explicit init → private CA, TLS and signing material + central SQLite database
 Agent enrollment token + CSR → scoped certificate and enrollment generation
 Agent mTLS batch → authenticated transaction → durable ACK
 Loopback operator API → signed policy / removal grant / revocation
+Console session + CSRF → group/template editor → preview → atomic signed deployment
 ```
 
 ## Architecture Notes
@@ -63,3 +66,8 @@ Loopback operator API → signed policy / removal grant / revocation
   loopback HTTP port 9444. Public binding requires explicit opt-in.
 - Host configs, runtime state, deployment records and credentials are excluded
   from this source project and distributable archives.
+- The optional console defaults to loopback port 9089 and starts only after
+  `init-panel`. It never passes the operator bearer token to browsers.
+- Versioned templates retain desired integrity settings centrally; wire v1 agents
+  receive supported settings only. Pending settings and agent application status
+  are displayed separately. Group edits have no automatic policy effects.

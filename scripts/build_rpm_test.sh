@@ -25,6 +25,7 @@ for test_path in go.mod go.sum Makefile install.sh README.md Project_tree.md \
   packaging/rpm/xe-antishell-central.spec \
   packaging/systemd/sentinel-central.service packaging/install_test.sh \
   cmd/sentinel-central/main.go internal/central/store.go \
+  internal/console/server.go internal/console/assets/index.html internal/console/assets/app.js \
   scripts/check-source.py scripts/build-rpm.sh \
   devdocs/plans/install.md devdocs/reviews/security.md \
   devdocs/analysis/managed-v1-operations.md; do
@@ -35,7 +36,7 @@ printf 'Name: xe-antishell-central\nVersion: 0.1.0\n' > "$XEAS_BUILD_ROOT/packag
 printf 'internal/central/private.go\nscripts/private_notes.py\n' > "$XEAS_BUILD_ROOT/.gitignore"
 for test_path in .aws/credentials .codex/session.json .git/config .env \
   internal/central/private.go internal/central/site.json internal/central/signing.key internal/central/private.pem \
-  internal/central/.private/hidden.go scripts/private_notes.py configs/hosts/real.yaml \
+  internal/central/.private/hidden.go internal/console/.private/hidden.js internal/console/assets/password.json internal/console/assets/session.key scripts/private_notes.py configs/hosts/real.yaml \
   packaging/systemd/sentinel-central-local-ports.conf devdocs/analysis/private-host.md \
   cmd/sentineld/main.go internal/agent/agent.go build/sentinel-central dist/rpm/old.rpm; do
   mkdir -p -- "$XEAS_BUILD_ROOT/$(dirname -- "$test_path")"
@@ -140,7 +141,7 @@ import sys,tarfile
 with tarfile.open(sys.argv[1], 'r:gz') as archive:
     names = set(archive.getnames())
     root = 'xe-antishell-central-0.1.0/'
-    for expected in ['README.md','LICENSE','THIRD_PARTY_NOTICES.md','third_party/licenses/upstream-LICENSE.txt','go.mod','cmd/sentinel-central/main.go','internal/central/store.go','devdocs/plans/install.md','devdocs/analysis/managed-v1-operations.md']:
+    for expected in ['README.md','LICENSE','THIRD_PARTY_NOTICES.md','third_party/licenses/upstream-LICENSE.txt','go.mod','cmd/sentinel-central/main.go','internal/central/store.go','internal/console/server.go','internal/console/assets/index.html','internal/console/assets/app.js','devdocs/plans/install.md','devdocs/analysis/managed-v1-operations.md']:
         assert root+expected in names, expected
     for member in archive.getmembers():
         assert member.name.startswith(root)

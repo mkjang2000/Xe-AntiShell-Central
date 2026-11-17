@@ -5,13 +5,15 @@
 서명 정책, 일회용 에이전트 삭제 승인 및 인증서 철회를 제공한다. 프로젝트
 코드는 MIT이며, 외부 의존성 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)에 있다.
 
-중앙 웹 UI, 다중 운영자 권한, 자동 인증서 갱신, PostgreSQL 및 중앙 서버
-다중화는 후속 범위다. 에이전트 탐지와 로컬 모니터링 패널은 별도 저장소에서
+한국어 중앙 웹패널에서 서버 현황과 기능 지원 상태, 탐지 이력, 정책·그룹,
+등록 토큰 및 일회용 삭제 승인을 관리한다. 다중 운영자 권한, 자동 인증서
+갱신, PostgreSQL 및 중앙 서버 다중화는 후속 범위다. 에이전트 탐지와 로컬 모니터링 패널은 별도 저장소에서
 배포한다. 이 패키지는 중앙 실행 파일 하나와 전용 서비스만 설치한다.
 
 ## 빌드와 검증
 
 Linux, Go 1.22 이상, GNU make, Bash, Git, Python 3.9 이상이 필요하다.
+브라우저 스크립트 검증에는 Node.js 22 이상이 필요하며 서비스 실행에는 필요하지 않다.
 검증용 race 테스트에는 C 컴파일러도 필요하다. Go 모듈은 고정 버전으로
 다운로드하며, SQLite는 `modernc.org/sqlite`의 pure Go 드라이버를 사용한다.
 공용 계약은 `github.com/mkjang2000/Xe-AntiShell/protocol v0.1.0`에 고정한다.
@@ -23,7 +25,7 @@ make static
 ```
 
 `make verify`는 소스·문서 검사, shell/패키징 회귀 검사, 형식 검사,
-`go vet`, race 테스트와 정적 실행 파일 빌드를 수행한다. 구조는
+브라우저 스크립트 테스트, `go vet`, race 테스트와 정적 실행 파일 빌드를 수행한다. 구조는
 [Project_tree.md](Project_tree.md)에 정리되어 있다.
 
 ## 설치
@@ -34,7 +36,7 @@ RPM 빌드에는 `rpm`, `rpmbuild`, systemd RPM 매크로와 GNU tar가 추가�
 
 ```sh
 make rpm
-sudo ./install.sh --rpm dist/rpm/xe-antishell-central-0.1.0-1.el9.x86_64.rpm
+sudo ./install.sh --rpm dist/rpm/xe-antishell-central-0.1.0-2.el9.x86_64.rpm
 # 또는 현재 소스를 빌드한 뒤 설치한다.
 sudo ./install.sh --build
 ```
@@ -54,6 +56,7 @@ PKI, DB 초기화 또는 에이전트 설정을 변경하지 않는다. 기존 `
 ```sh
 sudo sentinel-central init --state-dir /var/lib/xe-antishell-central \
   --hosts localhost,127.0.0.1,::1
+sudo sentinel-central init-panel --state-dir /var/lib/xe-antishell-central
 sudo systemctl enable --now sentinel-central.service
 ```
 
@@ -66,6 +69,54 @@ sudo systemctl enable --now sentinel-central.service
 override에서 `serve --listen IP:9443 --allow-non-loopback`을 명시한다.
 `--admin-listen`은 계속 loopback만 허용한다. TLS와 네트워크 접근 정책은
 운영자가 별도로 구성한다.
+
+## 중앙 웹패널
+
+`init-panel`은 기본 사용자 `admin`의 임의 비밀번호를 생성한다. 비밀번호는
+표준 출력에 표시하지 않고 상태 디렉터리의 `panel-initial-password`에
+0600 권한으로 저장한다. `--username`, `--password-file`로 변경할 수 있다.
+이미 존재하는 인증 파일은 덮어쓰지 않는다. 운영 중인 전용 서비스 계정으로
+초기화하려면 다음과 같이 실행한다.
+
+```sh
+sudo -u xe-antishell-central sentinel-central init-panel \
+  --state-dir /var/lib/xe-antishell-central
+sudo systemctl restart sentinel-central.service
+```
+
+기본 주소는 `http://127.0.0.1:9089`이다. 서비스 계정이 `panel-auth.json`을
+읽을 수 있어야 한다. `serve --panel-listen ''`로 패널을 끌 수 있다.
+외부 접속은 `--panel-listen 0.0.0.0:9089 --allow-non-loopback-panel`로
+명시한다. 에이전트 API의 `--allow-non-loopback`과는 별도 설정이다.
+패널 HTTPS는 `--panel-tls-cert /path/cert.pem --panel-tls-key /path/key.pem`으로
+구성한다. TLS를 종료하는 프록시의 전달 헤더는 신뢰하지 않으므로 프록시
+사용 시에도 패널 쪽 TLS와 같은 외부 Origin을 유지해야 한다.
+
+화면에는 다음 기능이 있다.
+
+- 전체 현황, 서버별 연결·정책 상태와 마지막 보고 시각
+- CPU·메모리·디스크·I/O·네트워크·프로세스 목록과 기능 가용성
+- 버전이 있는 그룹·정책 편집, 대상 미리보기 후 명시적 배포
+- 탐지·수집 이력과 중앙 관리 감사 이력
+- 서버 등록 토큰, 일회용 삭제 승인 파일 발급 및 등록 철회
+
+정책에서 탐지, 차단 점수·신뢰도·필수 기능, 삭제 통제, 자원 수집과
+무결성 검사를 설정할 수 있다. 무결성 설정은 현재 중앙에 보관하는 적용 대기
+항목이며, v1 에이전트에 실제 실행되었다고 표시하지 않는다. 정책 배포 완료는
+에이전트 적용 완료와 구분한다. 차단은 에이전트의 지원 기능과 로컬 차단 허용
+조건도 충족해야 한다. 기존 운영 정책은 패널 설치로 변경되지 않는다.
+
+그룹 편집은 정책을 자동 배포하지 않는다. 배포 미리보기 이후 정책·그룹·등록
+상태가 바뀌면 다시 미리보기해야 한다. 동시에 수정한 편집 내용은 이전 버전을
+덮어쓰지 않고 충돌로 알려준다. 자원 값은 최신 heartbeat의 스냅샷이며 장기
+성능 시계열은 제공하지 않는다.
+
+삭제 승인(OTP)은 6자리 TOTP가 아니라 대상 서버·등록 세대·삭제 요청값에
+묶인 짧은 유효기간의 서명 승인 파일이다. 에이전트에서 삭제 요청을 만든 뒤
+그 요청값을 패널에 입력하여 파일을 발급하고 에이전트 삭제 명령에 전달한다.
+정확한 명령은 아래 운영 문서를 따른다. 삭제 금지 정책이면 일반 승인을
+발급하지 않는다. 등록 토큰과 승인 파일은 발급 직후 한 번만 제공되며
+목록에서 다시 조회할 수 없다. 현재 웹 관리자 계정은 모든 중앙 관리 권한을 가진다.
 
 ```sh
 sudo sentinel-central enrollment-token \

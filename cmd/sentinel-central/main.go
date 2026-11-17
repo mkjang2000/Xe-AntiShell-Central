@@ -2,18 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
-	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/mkjang2000/Xe-AntiShell-Central/internal/central"
@@ -38,6 +33,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return initialize(args[1:], stdout, stderr)
 	case "enrollment-token":
 		return enrollmentToken(args[1:], stdout, stderr)
+	case "init-panel":
+		return initializePanel(args[1:], stdout, stderr)
 	case "serve":
 		return serve(args[1:], stderr)
 	case "version":
@@ -108,73 +105,13 @@ func enrollmentToken(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func serve(args []string, stderr io.Writer) error {
-	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	directory := flags.String("state-dir", defaultStateDirectory, "central state directory")
-	agentAddress := flags.String("listen", "127.0.0.1:9443", "HTTPS agent listener")
-	adminAddress := flags.String("admin-listen", "127.0.0.1:9444", "loopback operator API listener")
-	allowPublic := flags.Bool("allow-non-loopback", false, "allow a non-loopback agent listener")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if flags.NArg() != 0 {
-		return errors.New("serve accepts no positional arguments")
-	}
-	if !filepath.IsAbs(*directory) {
-		return errors.New("state directory must be absolute")
-	}
-	material, err := central.LoadMaterial(*directory)
-	if err != nil {
-		return err
-	}
-	store, err := central.Open(context.Background(), filepath.Join(*directory, "central.db"))
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-	logger := slog.New(slog.NewTextHandler(stderr, nil))
-	backend, err := central.NewServer(store, material, logger)
-	if err != nil {
-		return err
-	}
-	agentListener, err := central.Listen(*agentAddress, !*allowPublic)
-	if err != nil {
-		return err
-	}
-	defer agentListener.Close()
-	adminListener, err := central.Listen(*adminAddress, true)
-	if err != nil {
-		return err
-	}
-	defer adminListener.Close()
-	agentServer := central.HTTPServer(*agentAddress, backend.AgentHandler())
-	adminServer := central.HTTPServer(*adminAddress, backend.AdminHandler())
-	errorsChannel := make(chan error, 2)
-	go func() { errorsChannel <- agentServer.Serve(tls.NewListener(agentListener, material.TLSConfig())) }()
-	go func() { errorsChannel <- adminServer.Serve(adminListener) }()
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	logger.Info("central service started", "agent_https", agentListener.Addr().String(), "operator_api", adminListener.Addr().String())
-	var serveError error
-	select {
-	case <-ctx.Done():
-	case err := <-errorsChannel:
-		if !errors.Is(err, http.ErrServerClosed) {
-			serveError = err
-		}
-	}
-	shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	return errors.Join(serveError, agentServer.Shutdown(shutdownContext), adminServer.Shutdown(shutdownContext))
-}
-
 func usage(output io.Writer) {
 	fmt.Fprintln(output, `Usage: sentinel-central COMMAND
 
 Commands:
   init              Create private CA, server certificate, signing key and operator credential
   enrollment-token  Create a per-agent, expiring single-use enrollment credential file
-  serve             Run HTTPS agent API and loopback-only operator API
+  init-panel        Create web administrator credentials and a private initial password file
+  serve             Run agent/operator APIs and the optional management console
   version`)
 }

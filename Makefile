@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet static clean check-tools check-source format-check test-scripts verify rpm
+.PHONY: build test test-race test-ui vet static clean check-tools check-source format-check test-scripts verify rpm
 
 BUILD_DIR ?= build
 RPM_OUTPUT_DIR ?= dist/rpm
@@ -13,6 +13,10 @@ test:
 test-race:
 	go test -race ./...
 
+test-ui:
+	@set -- internal/console/assets/*.test.mjs; [ -f "$$1" ] || { echo 'Browser-script tests are missing.' >&2; exit 1; }
+	node --test internal/console/assets/*.test.mjs
+
 vet:
 	go vet ./...
 
@@ -21,10 +25,11 @@ static:
 	CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags='-s -w' -o "$(BUILD_DIR)/sentinel-central" ./cmd/sentinel-central
 
 check-tools:
-	@for tool in go gofmt git python3; do \
+	@for tool in go gofmt git python3 node; do \
 		command -v "$$tool" >/dev/null 2>&1 || { echo "Required verification tool is missing: $$tool" >&2; exit 1; }; \
 	done
 	@python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))' || { echo 'Python 3.9 or newer is required.' >&2; exit 1; }
+	@node -e 'if (Number(process.versions.node.split(".")[0]) < 22) process.exit(1)' || { echo 'Node.js 22 or newer is required.' >&2; exit 1; }
 
 check-source:
 	@if [ -f .local/private-source-patterns.txt ]; then \
@@ -48,6 +53,7 @@ verify:
 	$(MAKE) check-source
 	$(MAKE) format-check
 	$(MAKE) test-scripts
+	$(MAKE) test-ui
 	$(MAKE) vet
 	$(MAKE) test-race
 	$(MAKE) static

@@ -31,6 +31,7 @@
 *.crt
 *.csr
 web-auth.json
+panel-auth.json
 state.json
 operator-token
 policy-key

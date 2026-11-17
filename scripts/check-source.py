@@ -27,7 +27,7 @@ GENERATED_DIRS = frozenset({
     "__pycache__", ".venv",
 })
 PRIVATE_NAMES = frozenset({
-    "web-auth.json", "state.json", "operator-token", "policy-key", "id_rsa",
+    "web-auth.json", "panel-auth.json", "state.json", "operator-token", "policy-key", "id_rsa",
     "id_ed25519", "id_ecdsa", ".netrc", ".npmrc", ".pypirc", ".git-credentials",
     "auth.json", "credentials", "credentials.json", "token", "recovery-key",
     "recovery-code", "recovery-codes", "totp-secret", "bootstrap-token",

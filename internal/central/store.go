@@ -65,7 +65,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	if version > 1 {
+	if version > 2 {
 		_ = db.Close()
 		return nil, errors.New("central database schema is newer than this binary")
 	}
@@ -114,7 +114,10 @@ func (s *Store) initializeSchema(ctx context.Context) error {
 			}
 		}
 	}
-	if _, err = tx.ExecContext(ctx, "PRAGMA user_version=1"); err != nil {
+	if _, err = tx.ExecContext(ctx, consoleSchema); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "PRAGMA user_version=2"); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -228,7 +231,13 @@ func (s *Store) Authenticate(ctx context.Context, agentID, enrollmentID, serialV
 }
 
 func (s *Store) Agents(ctx context.Context) ([]Agent, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT agent_id,enrollment_id,hostname,enrolled_at_ns,last_seen_at_ns,revoked,heartbeat_json,desired_policy_revision FROM agents ORDER BY agent_id LIMIT 1000")
+	return listAgents(ctx, s.db)
+}
+
+func listAgents(ctx context.Context, query interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}) ([]Agent, error) {
+	rows, err := query.QueryContext(ctx, "SELECT agent_id,enrollment_id,hostname,enrolled_at_ns,last_seen_at_ns,revoked,heartbeat_json,desired_policy_revision FROM agents ORDER BY agent_id LIMIT 1000")
 	if err != nil {
 		return nil, err
 	}
@@ -236,9 +245,10 @@ func (s *Store) Agents(ctx context.Context) ([]Agent, error) {
 	result := make([]Agent, 0)
 	for rows.Next() {
 		var agent Agent
+		var heartbeat []byte
 		var enrolled, last int64
 		var revoked int
-		if err = rows.Scan(&agent.ID, &agent.EnrollmentID, &agent.Hostname, &enrolled, &last, &revoked, &agent.Heartbeat, &agent.DesiredPolicyRevision); err != nil {
+		if err = rows.Scan(&agent.ID, &agent.EnrollmentID, &agent.Hostname, &enrolled, &last, &revoked, &heartbeat, &agent.DesiredPolicyRevision); err != nil {
 			return nil, err
 		}
 		agent.EnrolledAt = time.Unix(0, enrolled).UTC()
@@ -247,6 +257,7 @@ func (s *Store) Agents(ctx context.Context) ([]Agent, error) {
 			agent.LastSeenAt = &at
 		}
 		agent.Revoked = revoked != 0
+		agent.Heartbeat = heartbeat
 		result = append(result, agent)
 	}
 	return result, rows.Err()

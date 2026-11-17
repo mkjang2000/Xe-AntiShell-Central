@@ -252,7 +252,7 @@ class SourceCheckTests(unittest.TestCase):
         for name in (
             "devdocs/analysis/host-install.md", "devdocs/analysis/host-validation.md",
             "packaging/systemd/sentinel-central-local-ports.conf", "runtime/data.sqlite-wal",
-            "runtime/offline-recovery.txt", "runtime/web-auth.json",
+            "runtime/offline-recovery.txt", "runtime/web-auth.json", "runtime/panel-auth.json",
         ):
             self.write(name)
         self.assertEqual(self.rules(), {

@@ -1,6 +1,6 @@
 Name:           xe-antishell-central
 Version:        0.1.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Independent Xe-AntiShell central management service
 License:        MIT AND Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND BSD-1-Clause AND SunPro
 URL:            https://github.com/mkjang2000/Xe-AntiShell-Central
@@ -15,7 +15,8 @@ Requires(pre):  shadow-utils
 %description
 Xe-AntiShell-Central provides authenticated agent enrollment, mTLS event
 delivery, signed policy distribution and a loopback operator API. It is
-independent of the Xe-AntiShell host agent package.
+independent of the Xe-AntiShell host agent package. An optional authenticated
+web console provides fleet monitoring and explicit policy/group administration.
 
 %prep
 %autosetup
@@ -50,6 +51,9 @@ getent passwd xe-antishell-central >/dev/null || useradd -r -g xe-antishell-cent
 %systemd_postun_with_restart sentinel-central.service
 
 %changelog
+* Tue Nov 17 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-2
+- Add the authenticated Korean central operations console and versioned policy/group storage
+- Preserve existing observation policy and enable the console only after init-panel
 * Tue Nov 17 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-1
 - Separate the central binary, dedicated account, service and RPM from the agent
 - Preserve existing PKI, policy, enrollment and database paths without initialization
