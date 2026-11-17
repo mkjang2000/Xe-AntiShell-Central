@@ -23,6 +23,7 @@ type Server struct {
 	logger        *slog.Logger
 	now           func() time.Time
 	enrollmentURL string
+	updateBlobs   *updateBlobStore
 }
 type authenticatedAgent struct{ ID, EnrollmentID string }
 
@@ -33,7 +34,11 @@ func NewServer(store *Store, material *Material, logger *slog.Logger) (*Server, 
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{store: store, material: material, logger: logger, now: time.Now}, nil
+	blobs, err := newUpdateBlobStore(material.Directory)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{store: store, material: material, logger: logger, now: time.Now, updateBlobs: blobs}, nil
 }
 
 func (s *Server) AgentHandler() http.Handler {
@@ -42,6 +47,11 @@ func (s *Server) AgentHandler() http.Handler {
 	mux.HandleFunc("POST /v1/ingest", s.withAgent(s.ingest))
 	mux.HandleFunc("POST /v1/heartbeat", s.withAgent(s.heartbeat))
 	mux.HandleFunc("GET /v1/policy", s.withAgent(s.policy))
+	mux.HandleFunc("POST /v1/update/status", s.withAgent(s.updateStatus))
+	mux.HandleFunc("GET /v1/update", s.withAgent(s.updateDesired))
+	mux.HandleFunc("GET /v1/update/artifacts/{sha256}", s.withAgent(s.updateArtifact))
+	mux.HandleFunc("POST /v1/update/claim", s.withAgent(s.updateClaim))
+	mux.HandleFunc("POST /v1/update/report", s.withAgent(s.updateReport))
 	return secureHeaders(mux)
 }
 

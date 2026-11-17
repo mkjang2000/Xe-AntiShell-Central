@@ -34,6 +34,15 @@ func (s *Server) ConsoleHandler() http.Handler {
 	// Consumption and single-operation replay protection remain agent duties.
 	mux.HandleFunc("POST /api/removal", s.consoleRemoval)
 	mux.HandleFunc("POST /api/revoke", s.consoleRevoke)
+	mux.HandleFunc("GET /api/updates/releases", s.consoleUpdateReleases)
+	mux.HandleFunc("POST /api/updates/releases", s.consoleUpdateReleases)
+	mux.HandleFunc("POST /api/updates/releases/{id}/delete", s.consoleDeleteUpdateRelease)
+	mux.HandleFunc("GET /api/updates/agents", s.consoleUpdateAgents)
+	mux.HandleFunc("POST /api/updates/preview", s.consoleUpdatePreview)
+	mux.HandleFunc("POST /api/updates/rollouts", s.consoleCreateUpdate)
+	mux.HandleFunc("GET /api/updates/rollouts", s.consoleUpdateRollouts)
+	mux.HandleFunc("GET /api/updates/rollouts/{id}", s.consoleUpdateRollout)
+	mux.HandleFunc("POST /api/updates/rollouts/{id}/cancel", s.consoleCancelUpdate)
 	return secureHeaders(mux)
 }
 

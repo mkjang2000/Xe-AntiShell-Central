@@ -120,6 +120,16 @@ func (s *Store) initializeSchema(ctx context.Context) error {
 	if err = initializeErrorHistory(ctx, tx); err != nil {
 		return err
 	}
+	if _, err = tx.ExecContext(ctx, updateSchema); err != nil {
+		return err
+	}
+	var updateVersion int
+	if err = tx.QueryRowContext(ctx, "SELECT version FROM feature_schema WHERE name='agent_updates'").Scan(&updateVersion); err != nil {
+		return err
+	}
+	if updateVersion != 1 {
+		return errors.New("central update schema is newer than this binary")
+	}
 	if _, err = tx.ExecContext(ctx, "PRAGMA user_version=2"); err != nil {
 		return err
 	}

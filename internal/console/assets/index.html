@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/assets/app.css">
   <link rel="stylesheet" href="/assets/theme.css">
   <link rel="stylesheet" href="/assets/accounts.css">
+  <link rel="stylesheet" href="/assets/updates.css">
   <script src="/assets/model.js" defer></script>
   <script src="/assets/access.js" defer></script>
   <script src="/assets/fleet.js" defer></script>
@@ -16,6 +17,7 @@
   <script src="/assets/operations.js" defer></script>
   <script src="/assets/history.js" defer></script>
   <script src="/assets/accounts.js" defer></script>
+  <script src="/assets/updates.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </head>
 <body data-page="console">
@@ -35,6 +37,7 @@
         <div class="side-label">OPERATIONS</div>
         <a href="#history" data-view="history"><span aria-hidden="true">⌕</span>탐지·실행 이력</a>
         <a href="#approvals" data-view="approvals"><span aria-hidden="true">⊕</span>등록·제거 승인</a>
+        <a href="#updates" data-view="updates"><span aria-hidden="true">↑</span>에이전트 업데이트</a>
         <a href="#audit" data-view="audit"><span aria-hidden="true">≡</span>감사 기록</a>
         <a href="#accounts" data-view="accounts"><span aria-hidden="true">♙</span><span id="accountsNavLabel">계정 관리</span></a>
       </nav>
@@ -101,6 +104,7 @@
       </section>
 
       <section id="view-accounts" class="view" aria-label="계정 관리" hidden></section>
+      <section id="view-updates" class="view" aria-label="에이전트 업데이트" hidden></section>
 
       <section id="view-approvals" class="view" aria-label="등록·제거 승인" hidden>
         <div class="two-column">

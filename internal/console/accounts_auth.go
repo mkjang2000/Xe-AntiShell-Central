@@ -43,17 +43,31 @@ func allowsAPI(role Role, method, endpoint string) bool {
 		return false
 	}
 	if method == http.MethodGet {
+		if endpoint == "/api/updates/releases" || endpoint == "/api/updates/agents" || endpoint == "/api/updates/rollouts" {
+			return true
+		}
+		parts := strings.Split(endpoint, "/")
+		if len(parts) == 5 && parts[1] == "api" && parts[2] == "updates" && parts[3] == "rollouts" && parts[4] != "" {
+			return true
+		}
 		switch endpoint {
 		case "/api/state", "/api/history", "/api/audit", "/api/errors":
 			return true
 		}
-		parts := strings.Split(endpoint, "/")
+		parts = strings.Split(endpoint, "/")
 		return len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[3] != "" && parts[4] == "policy"
 	}
 	if role != RoleOperator {
 		return false
 	}
 	if method == http.MethodPost {
+		if endpoint == "/api/updates/preview" || endpoint == "/api/updates/rollouts" {
+			return true
+		}
+		parts := strings.Split(endpoint, "/")
+		if len(parts) == 6 && parts[1] == "api" && parts[2] == "updates" && parts[3] == "rollouts" && parts[4] != "" && parts[5] == "cancel" {
+			return true
+		}
 		switch endpoint {
 		case "/api/groups", "/api/templates", "/api/deploy/preview", "/api/deploy", "/api/enrollment", "/api/removal", "/api/revoke":
 			return true

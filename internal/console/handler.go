@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -121,7 +122,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/assets/"):
 		name := strings.TrimPrefix(r.URL.Path, "/assets/")
 		switch name {
-		case "app.css", "app.js", "model.js", "fleet.js", "policy.js", "operations.js", "accounts.js", "accounts.css", "access.js", "theme.js", "theme.css", "history.js", "capability-editor.js":
+		case "app.css", "app.js", "model.js", "fleet.js", "policy.js", "operations.js", "accounts.js", "accounts.css", "access.js", "theme.js", "theme.css", "history.js", "capability-editor.js", "updates.js", "updates.css":
 		default:
 			http.NotFound(w, r)
 			return
@@ -208,8 +209,8 @@ func (s *server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, "GET, POST, DELETE")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxAPIBody)
 	if r.URL.Path == "/api/account/password" || r.URL.Path == "/api/account-audit" || r.URL.Path == "/api/accounts" || strings.HasPrefix(r.URL.Path, "/api/accounts/") {
+		r.Body = http.MaxBytesReader(w, r.Body, maxAPIBody)
 		s.serveAccounts(w, r, account)
 		return
 	}
@@ -217,6 +218,11 @@ func (s *server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		denyAccountAccess(w)
 		return
 	}
+	maximum := int64(maxAPIBody)
+	if r.Method == http.MethodPost && r.URL.Path == "/api/updates/releases" {
+		maximum = managed.MaxUpdateArtifactBytes
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maximum)
 	r = r.WithContext(context.WithValue(r.Context(), accountContextKey{}, account))
 	s.api.ServeHTTP(w, r)
 }

@@ -21,7 +21,8 @@ Xe-AntiShell-Central/
 │   ├── enrollment_code.go        # Certificate-bound endpoint config and installation-code issuance
 │   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
 │   ├── history_read.go           # Separate finding/event/error/audit projections
-│   └── agent_errors.go           # Durable deduplicated error transitions from heartbeats
+│   ├── agent_errors.go           # Durable deduplicated error transitions from heartbeats
+│   └── updates_*.go              # Private RPM blobs/catalog, signed snapshots, jobs/claims/reports
 ├── internal/console/              # Authentication, enforced roles, sessions and CSRF
 │   ├── accounts_store.go         # Persistent accounts, final-admin guard and account audit
 │   ├── accounts_auth.go          # Per-request identity and role authorization
@@ -29,7 +30,10 @@ Xe-AntiShell-Central/
 │   └── assets/                    # Korean fleet, policies, histories and dark/light themes
 │       ├── accounts.js           # Compact account list, dialogs and permission help
 │       ├── accounts.css          # Account table/dialog/tooltip responsive presentation
-│       └── accounts.test.mjs     # Dialog lifecycle, stale responses and role-help regressions
+│       ├── accounts.test.mjs     # Dialog lifecycle, stale responses and role-help regressions
+│       ├── updates.js            # Release catalog, raw upload and guarded update dialogs
+│       ├── updates.css           # Dense light/dark update tables and dialogs
+│       └── updates.test.mjs      # Roles, transport, preview, cancellation and terminal outcomes
 ├── packaging/
 │   ├── rpm/xe-antishell-central.spec
 │   ├── systemd/sentinel-central.service
@@ -69,7 +73,8 @@ Authenticated console → installation code with public CA → agent wizard → 
 
 - The shared `github.com/mkjang2000/Xe-AntiShell/protocol` module owns wire and
   cryptographic contracts; central does not import agent implementation.
-- Protocol v0.1.2 adds optional typed execution/file/network evidence while
+- Protocol v0.1.5 adds signed update plans/claims and independent inventory/reports,
+  alongside optional typed execution/file/network evidence, while
   preserving managed-v1 signed policy bytes and legacy omitted-field JSON.
   Its installation-code envelopes remain compatible. Offline recovery plaintext and
   client private keys are generated and retained only on the agent side.
@@ -103,3 +108,9 @@ Authenticated console → installation code with public CA → agent wizard → 
 - `assets/model.js` presents bounded typed observation fields and independent
   receipt freshness. `assets/history.js` labels execution options, file-write
   returns and TCP initiation without claiming code success or connection completion.
+- Update inventory and per-enrollment revision heads use additive tables without
+  changing legacy database version 2 or heartbeat JSON. RPM blobs remain outside
+  SQLite; slow uploads/downloads hold no database transaction. Admins publish
+  releases, operators schedule exact reviewed targets, and agents request short
+  install authorization only after verified download. Terminal outcomes stay
+  fixed when late reports arrive, and failed campaigns stop unclaimed targets.

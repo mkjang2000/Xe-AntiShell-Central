@@ -1,0 +1,56 @@
+/* Updates reuse the console's angular light/dark tokens and compact tables. */
+#view-updates > .panel-head { flex-wrap: wrap; }
+.update-actions { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+.update-table-scroll { border: 1px solid var(--line); margin: 12px 0; }
+.update-table th, .update-table td { padding: 9px 11px; }
+.update-table td { max-width: 320px; white-space: normal; overflow-wrap: anywhere; }
+.update-table th { white-space: nowrap; }
+.update-table td:first-child { min-width: 150px; font-weight: 600; }
+.update-table .update-actions { min-width: 130px; }
+.update-hash { color: var(--muted); font-size: 11px; }
+.update-dialog {
+  width: min(940px, calc(100% - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  padding: 22px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.update-dialog .dialog-head { margin-bottom: 14px; }
+.update-dialog h2 { font-size: 18px; }
+.update-dialog h3 { margin-top: 17px; }
+.update-dialog .facts { grid-template-columns: 130px minmax(0,1fr); }
+.update-dialog .dialog-actions {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+}
+.update-dialog .selection-box { max-height: 220px; background: var(--bg); }
+.update-dialog .selection-box label { margin-bottom: 3px; align-items: center; }
+.update-dialog .selection-box input { width: 20px; height: 20px; min-height: 20px; }
+.update-dialog .check-label { align-items: flex-start; line-height: 1.75; }
+.update-dialog .check-label input { margin-top: 3px; }
+.update-dialog .notice { margin-top: 4px; }
+.update-dialog-error {
+  padding: 10px 12px;
+  border-left: 3px solid var(--red);
+  background: var(--red-bg);
+  color: var(--red);
+  overflow-wrap: anywhere;
+}
+.update-dialog [role=status] { margin-top: 12px; }
+.update-dialog progress { width: 100%; height: 15px; margin: 14px 0; accent-color: var(--blue); }
+.update-preview { margin: 18px 0; border-top: 1px solid var(--line); padding-top: 13px; }
+.update-preview:empty { display: none; }
+#updateRPMFile { padding: 7px; }
+#updateUploadSubmit { margin-top: 12px; }
+#updateAgentSearch, #updateReleaseSearch { max-width: 380px; }
+@media (max-width:620px) {
+  .update-dialog { width: calc(100% - 20px); max-height: calc(100dvh - 20px); padding: 16px; }
+  .update-dialog .facts { grid-template-columns: 90px minmax(0,1fr); gap: 7px 10px; }
+  .update-dialog .dialog-actions { justify-content: stretch; }
+  .update-dialog .dialog-actions button { flex: 1 1 auto; white-space: normal; }
+  .update-table th, .update-table td { padding: 8px 9px; }
+  .update-actions button { min-height: 34px; }
+  .update-dialog .selection-box { max-height: 200px; }
+}

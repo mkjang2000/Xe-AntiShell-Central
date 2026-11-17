@@ -1,6 +1,6 @@
 Name:           xe-antishell-central
 Version:        0.1.0
-Release:        11%{?dist}
+Release:        12%{?dist}
 Summary:        Independent Xe-AntiShell central management service
 License:        MIT AND Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND BSD-1-Clause AND SunPro
 URL:            https://github.com/mkjang2000/Xe-AntiShell-Central
@@ -9,6 +9,7 @@ BuildRequires:  golang >= 1.22
 BuildRequires:  make
 BuildRequires:  systemd
 Requires(pre):  shadow-utils
+Requires:       rpm
 
 %global debug_package %{nil}
 
@@ -51,6 +52,12 @@ getent passwd xe-antishell-central >/dev/null || useradd -r -g xe-antishell-cent
 %systemd_postun_with_restart sentinel-central.service
 
 %changelog
+* Tue Nov 17 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-12
+- Manage bounded immutable agent RPM releases and explicit server/group update rollouts
+- Bind mTLS update plans, short install claims and durable reports to each enrollment
+- Stop remaining targets after failed or expired updates and retain late report history
+- Pin shared protocol v0.1.5 without changing legacy heartbeat or policy contracts
+
 * Tue Nov 17 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-11
 - Explain typed interpreter, file-write and TCP-initiation observations
 - Require fresh per-feature receipts before reporting live observation support
