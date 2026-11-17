@@ -10,6 +10,14 @@ import (
 
 // Origin checks intentionally ignore Forwarded and X-Forwarded-* headers.
 func sameOrigin(r *http.Request) bool {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return sameOriginFor(r, scheme, r.Host)
+}
+
+func sameOriginFor(r *http.Request, scheme, authority string) bool {
 	if site := r.Header.Get("Sec-Fetch-Site"); site == "cross-site" {
 		return false
 	}
@@ -35,11 +43,7 @@ func sameOrigin(r *http.Request) bool {
 	if err != nil || parsed.Opaque != "" || parsed.User != nil || parsed.Host == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return false
 	}
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	request, err := url.Parse(scheme + "://" + r.Host)
+	request, err := url.Parse(scheme + "://" + authority)
 	if err != nil || request.Host == "" || request.Path != "" || request.User != nil {
 		return false
 	}
@@ -52,6 +56,10 @@ func sameOriginHost(a, b string) bool {
 	if loopbackHost(a) && loopbackHost(b) {
 		return true
 	}
+	return equalHost(a, b)
+}
+
+func equalHost(a, b string) bool {
 	left, leftErr := netip.ParseAddr(a)
 	right, rightErr := netip.ParseAddr(b)
 	if leftErr == nil && rightErr == nil {

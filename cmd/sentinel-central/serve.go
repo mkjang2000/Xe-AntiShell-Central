@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -30,6 +31,8 @@ func serve(args []string, stderr io.Writer) error {
 	allowPublicPanel := flags.Bool("allow-non-loopback-panel", false, "allow a non-loopback console listener")
 	panelCert := flags.String("panel-tls-cert", "", "optional PEM TLS certificate for the console")
 	panelKey := flags.String("panel-tls-key", "", "optional PEM TLS private key for the console")
+	panelPublicOrigin := flags.String("panel-public-origin", "", "external HTTPS console origin behind a trusted TLS-terminating proxy")
+	panelTrustedProxies := flags.String("panel-trusted-proxies", "127.0.0.1/32,::1/128", "comma-separated actual proxy peer CIDRs; requires --panel-public-origin")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -38,6 +41,20 @@ func serve(args []string, stderr io.Writer) error {
 	}
 	if (*panelCert == "") != (*panelKey == "") {
 		return errors.New("console TLS certificate and key must be provided together")
+	}
+	options := console.Options{}
+	if *panelPublicOrigin != "" {
+		options.PublicOrigin = *panelPublicOrigin
+		options.TrustedProxies = strings.Split(*panelTrustedProxies, ",")
+	} else {
+		var explicitProxies bool
+		flags.Visit(func(f *flag.Flag) { explicitProxies = explicitProxies || f.Name == "panel-trusted-proxies" })
+		if explicitProxies {
+			return errors.New("--panel-trusted-proxies requires --panel-public-origin")
+		}
+	}
+	if err := options.Validate(); err != nil {
+		return err
 	}
 	material, err := central.LoadMaterial(*directory)
 	if err != nil {
@@ -85,7 +102,7 @@ func serve(args []string, stderr io.Writer) error {
 			return loadErr
 		}
 		if loadErr == nil {
-			handler, err := console.New(credentials, backend.ConsoleHandler(), logger)
+			handler, err := console.NewWithOptions(credentials, backend.ConsoleHandler(), logger, options)
 			if err != nil {
 				return err
 			}

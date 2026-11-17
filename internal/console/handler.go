@@ -36,12 +36,23 @@ type server struct {
 	now         func() time.Time
 	limiter     *loginLimiter
 	loginSlots  chan struct{}
+	origin      originPolicy
 }
 
 // New wraps a central business API with browser authentication. The supplied
 // handler receives authenticated /api/ requests with their original paths.
 // GET /api/session belongs to this wrapper and returns the current CSRF token.
 func New(credentials Credentials, apiHandler http.Handler, logger *slog.Logger) (http.Handler, error) {
+	return NewWithOptions(credentials, apiHandler, logger, Options{})
+}
+
+// NewWithOptions configures an explicitly trusted TLS-terminating proxy while
+// retaining New's native HTTP/TLS behavior for all other requests.
+func NewWithOptions(credentials Credentials, apiHandler http.Handler, logger *slog.Logger, options Options) (http.Handler, error) {
+	origin, err := options.originPolicy()
+	if err != nil {
+		return nil, err
+	}
 	if err := credentials.Validate(); err != nil {
 		return nil, err
 	}
@@ -62,6 +73,7 @@ func New(credentials Credentials, apiHandler http.Handler, logger *slog.Logger) 
 		logger:      logger,
 		now:         time.Now,
 		limiter:     newLoginLimiter(),
+		origin:      origin,
 		// At most one expensive password verification per console. This also
 		// bounds Argon2 memory when requests use many different source IPs.
 		loginSlots: make(chan struct{}, 1),
@@ -92,7 +104,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		http.SetCookie(w, &http.Cookie{
 			Name: sessionCookieName, Path: "/", MaxAge: -1,
-			HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode,
+			HttpOnly: true, Secure: s.origin.secure(r), SameSite: http.SameSiteStrictMode,
 		})
 		w.WriteHeader(http.StatusNoContent)
 	case strings.HasPrefix(r.URL.Path, "/assets/"):
@@ -189,7 +201,7 @@ func (s *server) serveAPI(w http.ResponseWriter, r *http.Request) {
 func (s *server) authorizeMutation(w http.ResponseWriter, r *http.Request) bool {
 	cookie, err := r.Cookie(sessionCookieName)
 	token := r.Header.Get("X-CSRF-Token")
-	if err != nil || len(token) != 43 || !hmac.Equal([]byte(token), []byte(s.csrfToken(cookie.Value))) || !sameOrigin(r) {
+	if err != nil || len(token) != 43 || !hmac.Equal([]byte(token), []byte(s.csrfToken(cookie.Value))) || !s.origin.sameOrigin(r) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "요청을 확인할 수 없습니다. 페이지를 새로 고침한 후 다시 시도해 주세요."})
 		return false
 	}
@@ -204,7 +216,7 @@ func (s *server) csrfToken(session string) string {
 }
 
 func (s *server) loginSubmit(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
+	if !s.origin.sameOrigin(r) {
 		s.loginError(w, r, "origin")
 		return
 	}
@@ -244,7 +256,7 @@ func (s *server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieName, Value: token, Path: "/",
 		MaxAge: int(sessionLifetime.Seconds()), Expires: s.now().Add(sessionLifetime),
-		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode,
+		HttpOnly: true, Secure: s.origin.secure(r), SameSite: http.SameSiteStrictMode,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

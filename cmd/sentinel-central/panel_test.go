@@ -86,3 +86,20 @@ func TestPanelRejectsPartialTLSBeforeOpeningListeners(t *testing.T) {
 		t.Fatalf("partial console TLS configuration accepted: %v", err)
 	}
 }
+
+func TestPanelRejectsInvalidProxyOptionsBeforeLoadingState(t *testing.T) {
+	for _, args := range [][]string{
+		{"--panel-public-origin", "http://console.example"},
+		{"--panel-public-origin", "https://console.example/login"},
+		{"--panel-public-origin", "https://console.example", "--panel-trusted-proxies", "not-a-network"},
+		{"--panel-public-origin", "https://console.example", "--panel-trusted-proxies", ""},
+		{"--panel-trusted-proxies", "127.0.0.1/32"},
+	} {
+		var stdout, stderr bytes.Buffer
+		full := append([]string{"serve", "--state-dir", "/does-not-exist-console-state"}, args...)
+		err := run(full, &stdout, &stderr)
+		if err == nil || strings.Contains(err.Error(), "does-not-exist-console-state") {
+			t.Fatalf("invalid proxy options did not fail before loading state: %v", err)
+		}
+	}
+}

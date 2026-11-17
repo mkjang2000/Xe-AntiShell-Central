@@ -68,6 +68,9 @@ Console session + CSRF → group/template editor → preview → atomic signed d
   from this source project and distributable archives.
 - The optional console defaults to loopback port 9089 and starts only after
   `init-panel`. It never passes the operator bearer token to browsers.
+- Explicit HTTPS public origins support TLS-terminating proxies only when the
+  actual peer matches configured CIDRs and the request Host matches that origin.
+  Forwarded headers remain untrusted; direct localhost access remains supported.
 - Versioned templates retain desired integrity settings centrally; wire v1 agents
   receive supported settings only. Pending settings and agent application status
   are displayed separately. Group edits have no automatic policy effects.

@@ -36,7 +36,7 @@ RPM 빌드에는 `rpm`, `rpmbuild`, systemd RPM 매크로와 GNU tar가 추가�
 
 ```sh
 make rpm
-sudo ./install.sh --rpm dist/rpm/xe-antishell-central-0.1.0-2.el9.x86_64.rpm
+sudo ./install.sh --rpm dist/rpm/xe-antishell-central-0.1.0-3.el9.x86_64.rpm
 # 또는 현재 소스를 빌드한 뒤 설치한다.
 sudo ./install.sh --build
 ```
@@ -89,8 +89,29 @@ sudo systemctl restart sentinel-central.service
 외부 접속은 `--panel-listen 0.0.0.0:9089 --allow-non-loopback-panel`로
 명시한다. 에이전트 API의 `--allow-non-loopback`과는 별도 설정이다.
 패널 HTTPS는 `--panel-tls-cert /path/cert.pem --panel-tls-key /path/key.pem`으로
-구성한다. TLS를 종료하는 프록시의 전달 헤더는 신뢰하지 않으므로 프록시
-사용 시에도 패널 쪽 TLS와 같은 외부 Origin을 유지해야 한다.
+구성한다.
+
+Cloudflare Tunnel처럼 외부 HTTPS를 내부 HTTP로 전달한다면 `serve` 옵션에
+외부 주소를 명시한다. 아래 도메인은 운영 주소로 교체한다.
+
+```sh
+sentinel-central serve --state-dir /var/lib/xe-antishell-central \
+  --panel-public-origin https://console.example.com
+```
+
+기존 `--listen`, `--admin-listen`, `--panel-listen` 사용자 설정도 함께 유지한다.
+Cloudflare의 서비스 유형은 **HTTP**, URL은 **127.0.0.1:9089**로 설정한다.
+브라우저의 `https://console.example.com`과 내부 서비스의 `http://127.0.0.1:9089`는
+서로 다른 연결이다. HTTP 패널에 HTTPS로 연결하면 502 오류가 발생한다.
+HTTP Host Header override는 비워 외부 호스트 이름을 유지한다.
+
+외부 Origin은 실제 연결 상대가 신뢰한 프록시이고 요청 Host도 일치할 때만
+사용한다. 기본 프록시 범위는 같은 서버의 `127.0.0.1/32,::1/128`이며 다른
+배치는 `--panel-trusted-proxies`로 정확한 CIDR을 지정한다. 외부 HTTPS 세션은
+Secure 쿠키를 사용하고, localhost 포트포워딩은 기존 HTTP 접속을 유지한다.
+`Forwarded`, `X-Forwarded-*`, `CF-Connecting-IP`는 신뢰하지 않는다.
+이 설정은 Cloudflare Access 인증을 대신하지 않으며 콘솔 로그인·CSRF 검사는
+계속 적용된다. 로그인 제한은 실제 프록시 연결 상대에 함께 적용된다.
 
 화면에는 다음 기능이 있다.
 
