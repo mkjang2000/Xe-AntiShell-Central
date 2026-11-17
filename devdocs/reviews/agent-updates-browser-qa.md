@@ -72,8 +72,37 @@ The separate run read only the two supplied public release files and its own
 temporary fixture credentials. It performed no installation and never accessed
 the publisher private key, production services or production APIs.
 
-# Remaining Integration Work
+# Approved Public GitHub and Single-Host Integration
 
-A public GitHub manifest/artifact fetch and agent/helper installation still
-require separate end-to-end checks. Browser verification does not approve
-publication or operational deployment.
+An additional explicitly approved production check imported the actual public
+v0.1.0-r24 EL9 and EL10 RPM/manifest pairs through the fixed GitHub endpoint.
+Both catalog entries passed publisher verification. The operator preview selected
+only the current server's policy-derived identity and active enrollment, no group,
+one eligible target, concurrency one, expected 23.el9 and the exact approved
+24.el9 release SHA. No other host was selected.
+
+The initial installation request was blocked by automatic approval review. It
+was not retried until the user explicitly approved this current-server-only RPM
+installation and restart. A fresh preview rechecked the same constraints before
+one confirmation created one job. The test's own browser session was logged out
+and its context closed; other accounts/sessions were not changed.
+
+Read-only post-install checks confirmed central succeeded, collection_check
+verified, actual installed and running 24.el9, a newer daemon start and fresh
+Tetragon receipt. The durable journal held four reports with acknowledged four
+and pending zero, matching the central report sequence. Independent checks also
+confirmed healthy collection, observe mode without termination permission,
+unchanged enrollment/policy identity and fresh optional observation capabilities.
+The owned agent/web services restarted; the other 65 services in the baseline
+kept their PIDs and activation times. A temporary system-service activation was
+observed and returned to inactive on a later read; its cause was not inferred.
+This review does not claim that every host service remained unchanged.
+
+No failed installation was automatically retried or reissued. Credentials,
+preview tokens, plans and raw production events were not recorded in the review.
+
+# Remaining Platform Validation
+
+EL10 catalog import does not establish a real EL10-host installation; that remains
+a separate platform validation. This current-host check does not authorize
+deployment to other hosts or groups.
