@@ -2,7 +2,12 @@
 
 (function (C) {
   const roles = {admin:"관리자",operator:"운영자",viewer:"조회자"};
-  const roleHelp = "관리자: 계정·권한 관리와 모든 조회·운영 작업. 운영자: 조회 기능과 정책·서버 그룹 관리, 설치 토큰 발급, 제거 승인(OTP) 발급과 등록 해지. 조회자: 서버 상태·보안 정책·이력 조회. 모든 역할은 본인 비밀번호를 변경할 수 있습니다.";
+  const roleHelp = [
+    ["관리자", "계정·권한 관리와 모든 조회·운영 작업"],
+    ["운영자", "조회 기능, 정책·서버 그룹 관리, 설치 토큰 발급, 제거 승인(OTP) 발급과 등록 해지"],
+    ["조회자", "서버 상태·보안 정책·이력 조회"],
+    ["공통", "모든 역할은 본인 비밀번호를 변경할 수 있습니다."]
+  ];
   const state = {accounts:[],generation:0,initialized:false};
   const dialogs = [];
   let adminPanel, rows, auditRows, detail, create, password, tooltip = null, tooltipNumber = 0, tooltipTimer = null;
@@ -29,7 +34,8 @@
     tooltip.tip.hidden=true;tooltip.control.setAttribute("aria-expanded","false");tooltip.pinned=false;tooltip=null;
   };
   const help = () => {
-    const wrap=el("span","account-help-wrap"),control=button("?"),tip=el("span","account-tooltip",roleHelp);
+    const wrap=el("span","account-help-wrap"),control=button("?"),tip=el("span","account-tooltip");
+    for(const [name,description] of roleHelp){const paragraph=el("p");paragraph.append(el("strong","",name),document.createTextNode(description));tip.append(paragraph);}
     control.className="account-help";control.setAttribute("aria-label","계정 권한 안내");control.setAttribute("aria-expanded","false");
     tip.id=`account-role-tooltip-${++tooltipNumber}`;tip.hidden=true;tip.setAttribute("role","tooltip");control.setAttribute("aria-describedby",tip.id);
     const item={wrap,control,tip,pinned:false};
