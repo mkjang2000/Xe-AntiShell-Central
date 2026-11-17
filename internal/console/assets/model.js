@@ -78,10 +78,11 @@
   };
   C.capabilityNames = {
     "observation.process_exec": "프로세스 실행 수집", "observation.process_lineage": "서비스 실행 경로 추적",
+    "observation.interpreter_exec": "인터프리터 실행 옵션 관측",
     "response.terminate": "안전 조건에 따른 프로세스 종료", "collector.tetragon": "실시간 실행 수집기",
     "collector.audit": "감사 기록 수집기", "host.platform": "운영체제 정보", "kernel.ebpf": "eBPF 실행 환경",
     "kernel.btf": "커널 형식 정보", "kernel.cgroup": "서비스 구분 정보", "integrity.ima": "운영체제 파일 측정 정보",
-    "integrity.tpm": "TPM 장치 진단", "observation.file": "파일 활동 감시", "observation.network": "네트워크 활동 감시",
+    "integrity.tpm": "TPM 장치 진단", "observation.file": "파일 쓰기 관측", "observation.network": "TCP 연결 요청 관측",
     "observation.credential_change": "권한 변경 감시"
   };
   C.capabilityFresh = (name, value, agent) => {
@@ -101,7 +102,14 @@
     if (!fresh) return {...result, label: "최신 상태 미확인", tone: "warning", note: "기능 보고가 없거나 오래되었습니다. 이전 보고 원문만 참고하세요."};
     if (name.startsWith("integrity.")) return {...result, label: "검증 미제공", tone: "pending", note: "장치·측정 정보의 진단 항목입니다. 에이전트 무결성 검증은 현재 제공하지 않습니다."};
     if (item.runtime_state === "error") return {...result, label: "확인 오류", tone: "danger", note: "기능 실행에서 오류가 보고되었습니다. 서버 설정과 수집기 로그를 확인하세요."};
-    const activeNote = name === "observation.process_lineage" ? "프로그램이 어느 서비스에서 실행되었는지 추적합니다. 일부 상위 프로세스 정보는 누락될 수 있습니다." : "에이전트에서 실행 정보를 수신하고 있습니다. 보존 이력은 탐지와 관련된 기록을 중심으로 표시합니다.";
+    if (!["supported","limited","unsupported","error"].includes(item.state)) return result;
+    const observationNotes = {
+      "observation.process_lineage": "프로그램이 어느 서비스에서 실행되었는지 추적합니다. 일부 상위 프로세스 정보는 누락될 수 있습니다.",
+      "observation.interpreter_exec": "실행 옵션 관측 이벤트가 보고됐습니다. 전용 수집 정책의 옵션 조건 또는 분리된 실행 인자로 직접 코드·임시 스크립트 실행 요청을 구분합니다. 기존 프로세스 내부 실행과 실행 성공·코드 내용은 확인하지 않습니다.",
+      "observation.file": "선택한 수집 정책의 파일 쓰기 이벤트가 보고됐습니다. 경로와 호출 반환값을 관측하며 파일 내용·모든 쓰기·디스크 반영을 보장하지 않습니다.",
+      "observation.network": "선택한 수집 정책의 TCP 연결 요청 이벤트가 보고됐습니다. 대상과 호출 반환값을 관측하며 연결 완료·모든 통신·전송 내용은 확인하지 않습니다."
+    };
+    const activeNote = observationNotes[name] || "에이전트에서 실행 정보를 수신하고 있습니다. 보존 이력은 탐지와 관련된 기록을 중심으로 표시합니다.";
     const live = item.implementation === "implemented" && item.runtime_state === "active";
     const mismatch = ["unsupported", "error"].includes(item.state) ? " 사전 환경 진단은 실제 수집 보고와 일치하지 않습니다. 기술 보고 원문을 확인하세요." : "";
     if (live && name === "kernel.ebpf") return {...result, label: "동작 진단 확인", tone: "good", note: "Tetragon 실행 이벤트로 프로세스 eBPF 후크 동작을 확인했습니다. 확인 범위는 프로세스 실행 후크이며, 그 밖의 eBPF 기능은 별도 검증이 필요합니다." + mismatch};
@@ -124,10 +132,47 @@
       active:["수집 동작 보고","good",activeNote],
       available:["사용 가능 · 미동작","neutral","서버 지원 조건은 확인했지만 실제 기능 동작은 아직 보고되지 않았습니다."],
       inactive:["사용 안 함","neutral","현재 이 기능을 사용하지 않습니다. 다른 수집기 사용 여부와 서버 설정을 확인하세요."],
-      unverified:["동작 미확인","warning","실제 정보 수신을 확인하지 못했습니다. 에이전트 수집기 연결 상태를 확인하세요."]
+      unverified:["동작 미확인","warning",["observation.interpreter_exec","observation.file","observation.network"].includes(name)?"수집 정책이나 설정만으로 동작을 확인할 수 없습니다. 이 기능의 실제 관측 이벤트 수신은 아직 확인되지 않았습니다.":"실제 정보 수신을 확인하지 못했습니다. 에이전트 수집기 연결 상태를 확인하세요."]
     };
     if (Object.hasOwn(states, item.runtime_state)) { result.label = states[item.runtime_state][0]; result.tone = states[item.runtime_state][1]; result.note = states[item.runtime_state][2]; }
     return result;
+  };
+  C.eventLabel = value => {
+    const labels = {"process.exec":"프로그램 실행","process.exit":"프로그램 종료","process.exec_observation":"실행 옵션 관측","file.write":"파일 쓰기 관측","network.connect":"TCP 연결 요청 관측"};
+    return Object.hasOwn(labels,value) ? labels[value] : "추가 수집 이벤트";
+  };
+  C.findingPresentation = value => {
+    const rules = {
+      "web-descendant-inline-interpreter":["웹 서비스에서 직접 코드 실행 요청","직접 코드 실행 옵션을 관측했습니다. 코드 내용과 실행 성공 여부는 확인하지 않습니다."],
+      "web-descendant-temporary-script":["웹 서비스에서 임시 경로의 스크립트 실행 요청","임시·메모리·파일 디스크립터 경로의 스크립트 인자를 관측했습니다. 파일 내용과 실행 성공 여부는 확인하지 않습니다."],
+      "web-descendant-temporary-executable":["웹 서비스에서 임시 경로의 실행 파일 실행","임시 또는 메모리 파일 경로의 프로그램이 실행됐습니다. 출처와 정상 운영 작업 여부를 확인하세요."]
+    };
+    const finding=C.object(value);
+    return Object.hasOwn(rules,finding.rule_id) ? {title:rules[finding.rule_id][0],note:rules[finding.rule_id][1]} : {title:finding.summary||finding.rule_id||"의심 행위 탐지",note:"탐지 조건에 해당하는 기록이며 침해 확정을 뜻하지 않습니다."};
+  };
+  C.eventObservation = (event) => {
+    const object = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const label = (labels, value) => Object.hasOwn(labels, value) ? labels[value] : "미확인";
+    const returned = (value) => value === null || value === undefined ? "미수집" : Number.isSafeInteger(value) ? String(value) : "정확한 값 미확인";
+    const fields = [];
+    let summary = "";
+    if (["process.exec", "process.exec_observation"].includes(event.event_type) && event.execution) {
+      const value = object(event.execution);
+      summary = value.mode === "inline" ? "인터프리터의 직접 코드 실행 옵션을 관측했습니다. 코드 내용과 실행 성공 여부는 확인하지 않습니다." : value.mode === "script" ? "임시·메모리·파일 디스크립터 경로의 스크립트 실행 인자를 관측했습니다. 파일 내용과 실행 성공 여부는 확인하지 않습니다." : "인터프리터 실행 근거가 보고됐습니다. 관측 범위는 상세 정보를 확인하세요.";
+      const option = ["-c","-e","-E","-p","--eval","--print","-r","-f"].includes(value.option) ? value.option : value.mode === "script" && !value.option ? "위치 인자 (옵션 없음)" : "미확인";
+      fields.push(["인터프리터", label({python:"Python",node:"Node.js",php:"PHP",perl:"Perl",ruby:"Ruby"}, value.runtime)], ["실행 방식", label({inline:"직접 코드 실행 옵션",script:"스크립트 파일 인자"}, value.mode)], ["관측 근거", label({exact_argv:"분리된 실행 인자의 정확한 옵션·위치",tetragon_policy:"전용 수집 정책의 실행 옵션 조건"}, value.evidence)], ["확인한 옵션", option], ["스크립트 경로 종류", value.mode === "inline" ? "해당 없음" : label({temporary:"임시 경로",memory:"메모리 파일 경로",fd:"파일 디스크립터 경로"}, value.script_location)], ["수집 정책", value.policy_name]);
+    } else if (event.event_type === "file.write") {
+      const value = object(event.file);
+      summary = label({written:"파일 쓰기 호출에서 쓴 바이트 수가 보고됐습니다. 디스크 반영과 파일 내용은 확인하지 않습니다.",no_data:"파일 쓰기 호출이 0을 반환했습니다. 이 호출에서 쓴 데이터는 없습니다.",failed:"파일 쓰기 호출이 실패로 보고됐습니다.",unknown:"파일 쓰기 호출을 관측했습니다. 반환 결과는 확인되지 않았습니다."}, value.outcome);
+      if (summary === "미확인") summary = "파일 쓰기 관측의 결과를 확인할 수 없습니다.";
+      fields.push(["파일 경로",value.path], ["쓰기 결과",label({written:"쓰기 바이트 수 보고",no_data:"쓴 데이터 없음",failed:"실패",unknown:"결과 미확인"},value.outcome)], ["원래 반환값",returned(value.return_value)], ["반환값 의미","양수: 쓴 바이트 수 · 0: 쓴 데이터 없음 · 음수: 커널 오류. 디스크 반영 여부는 별도 확인이 필요합니다."], ["관측 함수",value.function], ["수집 정책",value.policy_name]);
+    } else if (event.event_type === "network.connect") {
+      const value = object(event.network);
+      summary = label({initiated:"TCP 연결 요청이 커널에서 받아들여졌습니다. 연결 완료나 데이터 전송을 뜻하지 않습니다.",failed:"TCP 연결 요청이 실패로 보고됐습니다. 연결 완료 여부는 별도 관측이 필요합니다.",unknown:"TCP 연결 요청을 관측했습니다. 결과와 연결 완료 여부는 확인되지 않았습니다."},value.outcome);
+      if (summary === "미확인") summary = "TCP 연결 요청의 결과를 확인할 수 없습니다.";
+      fields.push(["대상 주소",value.destination_address], ["대상 포트",Number.isInteger(value.destination_port) && value.destination_port > 0 && value.destination_port <= 65535 ? value.destination_port : "미확인"], ["프로토콜",label({tcp:"TCP"},value.protocol)], ["주소 종류",label({ipv4:"IPv4",ipv6:"IPv6",AF_INET:"IPv4",AF_INET6:"IPv6"},value.family)], ["요청 결과",label({initiated:"연결 요청 시작",failed:"요청 실패",unknown:"결과 미확인"},value.outcome)], ["원래 반환값",returned(value.return_value)], ["반환값 의미","0: 커널 연결 요청 시작 · 음수: 커널 오류. 연결 완료·상대 응답·통신 내용은 확인하지 않습니다."], ["관측 함수",value.function], ["수집 정책",value.policy_name]);
+    }
+    return {summary, fields};
   };
   C.lines = value => String(value || "").split(/\r?\n/).map(item => item.trim()).filter(Boolean);
   C.parseChallenge = (text, agentID, enrollmentID) => {

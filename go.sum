@@ -10,6 +10,8 @@ github.com/mkjang2000/Xe-AntiShell/protocol v0.1.0 h1:1GhD3rGV0YjqIi/+1RZHnyrhEa
 github.com/mkjang2000/Xe-AntiShell/protocol v0.1.0/go.mod h1:QHdZmqeTgVOaaeXaM0iCR7yXGEN49Uu72m4LztWpUdc=
 github.com/mkjang2000/Xe-AntiShell/protocol v0.1.1 h1:ZW6Xf8IhjA9EHTxOjKJQ2MXUgn8ZZw3N3wkeOLrj7BE=
 github.com/mkjang2000/Xe-AntiShell/protocol v0.1.1/go.mod h1:QHdZmqeTgVOaaeXaM0iCR7yXGEN49Uu72m4LztWpUdc=
+github.com/mkjang2000/Xe-AntiShell/protocol v0.1.2 h1:FMpnEqmMnIeLg1eJLfVQVf4oU9IR9hlNuFdClnj4vcI=
+github.com/mkjang2000/Xe-AntiShell/protocol v0.1.2/go.mod h1:QHdZmqeTgVOaaeXaM0iCR7yXGEN49Uu72m4LztWpUdc=
 github.com/ncruces/go-strftime v0.1.9 h1:bY0MQC28UADQmHmaF5dgpLmImcShSi2kHU9XLdhx/f4=
 github.com/ncruces/go-strftime v0.1.9/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=

@@ -41,3 +41,52 @@ test("changing filters clears results before a failed new request",async()=>{
   let fail=false;const {C,text}=harness(async()=>{if(fail)throw new Error("network failure");return {items:[{agent_id:"a",kind:"finding",payload:{summary:"PREVIOUS_FINDING"}}],next:""};});
   await C.loadHistory(true);assert.match(text(C.id("historyRows")),/PREVIOUS_FINDING/);fail=true;C.id("historyKind").value="errors";await C.loadHistory(true);assert.doesNotMatch(text(C.id("historyRows")),/PREVIOUS_FINDING/);assert.match(C.lastError,/network failure/);
 });
+
+test("execution and collection history includes typed operation filters and metadata",async()=>{
+  const records=[
+    {event_type:"process.exec_observation",execution:{runtime:"python",mode:"inline",option:"-c",evidence:"tetragon_policy",code:"SECRET_SOURCE"}},
+    {event_type:"process.exec",execution:{runtime:"php",mode:"script",evidence:"exact_argv",script_location:"fd"}},
+    {event_type:"file.write",file:{path:"/tmp/<img>",outcome:"written",return_value:12,function:"vfs_write"}},
+    {event_type:"network.connect",network:{protocol:"tcp",family:"ipv6",destination_address:"::1",destination_port:443,outcome:"initiated",return_value:0,function:"tcp_v6_connect"}}
+  ];
+  const {C,text}=harness(async()=>({items:records.map((payload,index)=>({kind:"event",agent_id:"a",payload:{event_id:`e-${index}`,process:{exe:"/usr/bin/php",pid:42},...payload}})),next:""}));
+  C.id("historyKind").value="events";await C.loadHistory(true);
+  const values=C.id("historyTypes").children.map(node=>node.value);
+  for(const value of ["process.exec","process.exit","process.exec_observation","file.write","network.connect"])assert.ok(values.includes(value));
+  assert.equal(C.id("historyTypes").children.find(node=>node.value==="network.connect").label,"TCP 연결 요청 관측");
+  const cards=C.id("historyRows").children,visible=cards.map(card=>card.children.filter(node=>node.tagName!=="details").map(text).join(" ")).join(" ");
+  assert.match(visible,/실행 옵션 관측/);assert.match(visible,/전용 수집 정책의 실행 옵션 조건/);assert.match(visible,/파일 디스크립터 경로/);
+  assert.match(visible,/파일 쓰기 관측/);assert.match(visible,/원래 반환값12/);assert.match(visible,/\/tmp\/<img>/);
+  assert.match(visible,/TCP 연결 요청 관측/);assert.match(visible,/원래 반환값0/);assert.match(visible,/IPv6/);assert.match(visible,/::1/);assert.match(visible,/연결 완료/);
+  assert.doesNotMatch(visible,/SECRET_SOURCE|연결 완료했습니다|통신 성공|ESTABLISHED/);
+  assert.match(text(C.id("historyScope")),/기존 프로세스 내부 코드 실행을 보장하지 않습니다/);
+  for(const card of cards)assert.notEqual(card.children.at(-1).open,true,"original evidence remains collapsed");
+  C.id("historyType").value="file.write";assert.equal(C.historyQuery({view:"events",agent:"a",type:"file.write",search:"",from:"",until:""}).get("type"),"file.write");
+});
+
+test("return values preserve absent, zero, error and conservative unknown distinctions",()=>{
+  const {C}=harness();
+  const field=(copy,name)=>copy.fields.find(entry=>entry[0]===name)?.[1];
+  for(const [outcome,result,expected] of [["written",5,"쓰기 바이트 수 보고"],["no_data",0,"쓴 데이터 없음"],["failed",-13,"실패"],["unknown",null,"결과 미확인"]]){
+    const copy=C.eventObservation({event_type:"file.write",file:{outcome,return_value:result}});
+    assert.equal(field(copy,"쓰기 결과"),expected);assert.equal(field(copy,"원래 반환값"),result===null?"미수집":String(result));
+    assert.match(field(copy,"반환값 의미"),/디스크 반영 여부는 별도 확인/);
+  }
+  for(const [outcome,result] of [["initiated",0],["failed",-111],["unknown",undefined]]){
+    const copy=C.eventObservation({event_type:"network.connect",network:{outcome,return_value:result}});
+    assert.equal(field(copy,"원래 반환값"),result===undefined?"미수집":String(result));assert.match(copy.summary,/연결 완료/);
+  }
+  const bad=C.eventObservation({event_type:"network.connect",network:{outcome:"constructor",return_value:"0",destination_port:0}});
+  assert.match(bad.summary,/확인할 수 없습니다/);assert.equal(field(bad,"원래 반환값"),"정확한 값 미확인");assert.equal(field(bad,"대상 포트"),"미확인");
+  assert.equal(C.eventObservation({event_type:"process.exit",file:{path:"WRONG_TYPE"}}).fields.length,0);
+  const code=C.eventObservation({event_type:"process.exec",execution:{runtime:"__proto__",mode:"inline",evidence:"constructor",option:"SECRET_CODE",code:"SECRET_SOURCE"}});
+  assert.doesNotMatch(JSON.stringify(code),/SECRET_CODE|SECRET_SOURCE/);assert.equal(field(code,"관측 근거"),"미확인");
+});
+
+test("inline and temporary script findings show request evidence and detection-only scope",async()=>{
+  const {C,text}=harness(async()=>({items:["web-descendant-inline-interpreter","web-descendant-temporary-script"].map(rule_id=>({kind:"finding",agent_id:"a",payload:{rule_id,severity:"high",risk_score:70,detection_only:true,summary:"RAW_OLD_SUMMARY"}})),next:""}));
+  await C.loadHistory(true);
+  const visible=C.id("historyRows").children.map(card=>card.children.filter(node=>node.tagName!=="details").map(text).join(" ")).join(" ");
+  assert.match(visible,/직접 코드 실행 요청/);assert.match(visible,/임시 경로의 스크립트 실행 요청/);assert.match(visible,/실행 성공 여부는 확인하지 않습니다/);
+  assert.match(visible,/자동 종료 대상에 포함되지 않습니다/);assert.match(visible,/악성 확률이 아닙니다/);assert.doesNotMatch(visible,/RAW_OLD_SUMMARY/);
+});

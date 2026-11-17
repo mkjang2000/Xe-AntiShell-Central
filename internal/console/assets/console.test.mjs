@@ -126,6 +126,24 @@ test("missing metrics remain unknown while observed zero remains zero",()=>{
   assert.equal(C.percent(0),"0.0%");assert.equal(C.bytes(0),"0 B");assert.equal(C.rate(0),"0 B/s");
 });
 
+test("scoped observation capabilities need their own evidence and describe limited coverage",()=>{
+  const {C}=model();
+  const scopes={"observation.interpreter_exec":/기존 프로세스 내부 실행과 실행 성공·코드 내용은 확인하지/,"observation.file":/파일 내용·모든 쓰기·디스크 반영을 보장하지/,"observation.network":/연결 완료·모든 통신·전송 내용은 확인하지/};
+  for(const [name,scope] of Object.entries(scopes)){
+    const cap={state:"limited",implementation:"implemented",runtime_state:"active",verified_at:"2026-11-17T02:59:55Z"};
+    assert.equal(C.capability(name,cap,true).tone,"good");assert.match(C.capability(name,cap,true).note,scope);
+    const waiting=C.capability(name,{...cap,runtime_state:"unverified"},true);assert.notEqual(waiting.tone,"good");assert.match(waiting.note,/수집 정책이나 설정만으로 동작을 확인할 수 없습니다/);
+    for(const runtime_state of ["available","inactive","error"])assert.notEqual(C.capability(name,{...cap,runtime_state},true).tone,"good");
+    for(const state of [undefined,"future"])assert.notEqual(C.capability(name,{...cap,state},true).tone,"good");
+    assert.notEqual(C.capability(name,{...cap,implementation:"planned"},true).tone,"good");
+    assert.notEqual(C.capability(name,{...cap,implementation:undefined},true).tone,"good");
+    assert.equal(C.capabilityFresh(name,cap,agent()),true);
+    assert.equal(C.capabilityFresh(name,{...cap,verified_at:undefined},agent()),false);
+    assert.equal(C.capabilityFresh(name,{...cap,verified_at:"2026-11-17T02:00:00Z"},agent()),false);
+    assert.equal(C.capability(name,cap,false).label,"최신 상태 미확인");
+  }
+});
+
 function settings(C) {
   return C.settingsFromValues({detectionEnabled:true,extendedRules:true,webExecutables:"nginx\nphp-fpm",webServices:"nginx.service",shells:"sh\nbash",allowedPairs:"maintenance.service:bash",responseMode:"observe",responseAction:"none",riskThreshold:"90",minConfidence:"0.95",requiredCapabilities:"observation.process_exec\nresponse.terminate",monitoringEnabled:true,sampleInterval:"10",processLimit:"200",uninstallMode:"approval_required",validityHours:"24",integrityEnabled:true,integrityTPM:true,integrityMode:"enforce",integrityPaths:"/usr/sbin/sentineld\n/etc/xe-antishell"});
 }
@@ -219,6 +237,22 @@ test("fleet shows live collection separately from passive diagnosis and preserve
   assert.match(text(row.children[3]),new RegExp(`실동작 확인: ${C.time(report.capabilities["collector.tetragon"].verified_at)}`));
   const raw=nodes.find(node=>node.tagName==="details"&&node.children[0].textContent==="기술 보고 원문 보기");
   assert.notEqual(raw.open,true);assert.deepEqual(JSON.parse(raw.children[1].textContent),report);
+});
+test("fleet presents interpreter, file and network scopes with separate evidence states",()=>{
+  const {C,context}=appHarness();vm.runInContext(source("fleet.js"),context);
+  const report={probed_at:"2026-11-17T02:59:00Z",capabilities:{
+    "observation.interpreter_exec":{state:"limited",implementation:"implemented",runtime_state:"unverified"},
+    "observation.file":{state:"limited",implementation:"implemented",runtime_state:"active",verified_at:"2026-11-17T02:59:55Z"},
+    "observation.network":{state:"limited",implementation:"implemented",runtime_state:"active",verified_at:"2026-11-17T02:00:00Z"}
+  }};
+  C.state.agents=[agent({heartbeat:{sent_at:"2026-11-17T02:59:50Z",status:{capability_report:report}}})];C.selectedAgent="web-01";C.renderAgentDetail(false);
+  const text=node=>typeof node==="string"?node:node.textContent+node.children.map(text).join("");
+  const rows=C.id("agentDetailBody").querySelectorAll("*");
+  const row=name=>rows.find(node=>node.tagName==="tr"&&text(node.children[0])===C.capabilityNames[name]);
+  assert.equal(row("observation.interpreter_exec").children[2].children[0].textContent,"동작 미확인");
+  assert.equal(row("observation.file").children[2].children[0].textContent,"수집 동작 보고");assert.match(text(row("observation.file")),/디스크 반영을 보장하지/);
+  assert.equal(row("observation.network").children[2].children[0].textContent,"최신 상태 미확인");
+  assert.match(text(C.id("agentDetailBody")),/전용 정책 파일만으로.*확인되지는 않습니다/);
 });
 test("fresh fleet snapshots retain static and inactive states while active evidence expires separately",()=>{
   const {C,context}=appHarness();vm.runInContext(source("fleet.js"),context);

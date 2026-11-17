@@ -103,7 +103,7 @@
   const capabilities = (agent, container) => {
     const report = C.object(status(agent).capability_report), entries = Object.entries(C.object(report.capabilities));
     container.append(heading("기능 구현·실동작 상태"));
-    container.append(C.el("p", "panel-note", "구현 여부·환경 지원과 실제 동작 보고를 구분합니다. 장치 진단이 곧 탐지·차단 기능의 동작을 의미하지 않습니다."));
+    container.append(C.el("p", "panel-note", "구현 여부·환경 지원과 실제 동작 보고를 구분합니다. 전용 정책 파일만으로 실행 옵션·파일 쓰기·TCP 연결 요청 수집이 확인되지는 않습니다. 각 기능의 실제 이벤트 수신과 확인 시각을 보세요. 관측은 코드 실행 성공·연결 완료나 자동 종료 허용을 뜻하지 않습니다."));
     const buildRows = list => list.map(([name, value]) => {
       const item = C.object(value), presentation = C.capability(name, item, C.capabilityFresh(name, item, agent));
       const identity = C.el("div"); identity.append(C.el("strong", "", presentation.title));

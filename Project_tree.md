@@ -69,8 +69,9 @@ Authenticated console → installation code with public CA → agent wizard → 
 
 - The shared `github.com/mkjang2000/Xe-AntiShell/protocol` module owns wire and
   cryptographic contracts; central does not import agent implementation.
-- Protocol v0.1.1 adds bounded installation-code envelopes without changing
-  managed-v1 wire schemas or signed policy bytes. Offline recovery plaintext and
+- Protocol v0.1.2 adds optional typed execution/file/network evidence while
+  preserving managed-v1 signed policy bytes and legacy omitted-field JSON.
+  Its installation-code envelopes remain compatible. Offline recovery plaintext and
   client private keys are generated and retained only on the agent side.
 - Central owns one binary, service and dedicated account. Its RPM scriptlets
   never call the agent CLI or apply the agent removal approval policy.
@@ -99,3 +100,6 @@ Authenticated console → installation code with public CA → agent wizard → 
 - Browser modules separate account administration, history filters, permission
   presentation, capability editing and theme preferences. No frontend build or
   third-party browser runtime dependency is required.
+- `assets/model.js` presents bounded typed observation fields and independent
+  receipt freshness. `assets/history.js` labels execution options, file-write
+  returns and TCP initiation without claiming code success or connection completion.
