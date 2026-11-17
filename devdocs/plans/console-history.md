@@ -76,3 +76,13 @@ Render all record data with text nodes; raw records use escaped text details.
 - Browser tab/API separation, date conversion and query encoding, delayed
   response rejection, and removal of stale rows after failed category changes.
 - Existing central and browser regression suites remain enabled.
+
+## Existing-data compatibility
+
+Real non-detection bundles commonly encode a nil findings slice as JSON null.
+SQLite json_each emits a null-key row for this value, so projected detection
+queries must require a nonempty array and object elements. Regression coverage
+includes missing/null/empty/scalar and mixed arrays. A partial bundle index skips
+normal non-detection records; an EXPLAIN test checks the actual page query uses it.
+Creating this index reads existing records once during schema initialization.
+Original delivery records and the agent protocol remain unchanged.

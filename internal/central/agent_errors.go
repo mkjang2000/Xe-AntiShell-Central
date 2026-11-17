@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS console_agent_errors(id INTEGER PRIMARY KEY AUTOINCRE
 CREATE INDEX IF NOT EXISTS console_agent_errors_page_idx ON console_agent_errors(recorded_at_ns DESC,id DESC);
 CREATE INDEX IF NOT EXISTS console_agent_errors_agent_idx ON console_agent_errors(agent_id,recorded_at_ns DESC,id DESC);
 CREATE INDEX IF NOT EXISTS records_history_kind_idx ON records(kind,received_at_ns DESC,agent_id DESC,record_id DESC);
+CREATE INDEX IF NOT EXISTS records_history_detection_bundle_idx ON records(received_at_ns DESC,agent_id DESC,record_id DESC) WHERE kind='event_bundle' AND json_array_length(payload,'$.findings')>0;
 CREATE INDEX IF NOT EXISTS audit_history_page_idx ON audit(created_at_ns DESC,audit_id DESC);
 CREATE INDEX IF NOT EXISTS audit_history_agent_idx ON audit(agent_id,created_at_ns DESC,audit_id DESC);
 `

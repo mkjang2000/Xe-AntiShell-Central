@@ -6,6 +6,16 @@ import (
 	"time"
 )
 
+const detectionHistoryProjection = `SELECT agent_id,kind AS source_kind,record_id,received_at_ns,payload,0 AS item,'finding' AS display_kind FROM records WHERE kind='finding'
+UNION ALL SELECT r.agent_id,r.kind,r.record_id,r.received_at_ns,j.value,CAST(j.key AS INTEGER),'finding' FROM records r INDEXED BY records_history_detection_bundle_idx,json_each(r.payload,'$.findings') j
+WHERE r.kind='event_bundle' AND json_array_length(r.payload,'$.findings')>0 AND json_type(r.payload,'$.findings')='array' AND j.type='object'`
+
+const historyPageQuery = `WITH history AS (%s) SELECT agent_id,display_kind,record_id,received_at_ns,payload,source_kind,item FROM history
+WHERE (?='' OR agent_id=?) AND (?=0 OR received_at_ns>=?) AND (?=0 OR received_at_ns<?)
+AND (?='' OR json_extract(payload,?)=?) AND (?='' OR instr(lower(CAST(payload AS TEXT)),lower(?))>0)
+AND (?=0 OR (received_at_ns,agent_id,source_kind,record_id,item)<(?,?,?,?,?))
+ORDER BY received_at_ns DESC,agent_id DESC,source_kind DESC,record_id DESC,item DESC LIMIT ?`
+
 // The projected views expose one event or one finding per row. Delivery bundles
 // remain immutable in records; legacy /api/history?kind= callers are unchanged.
 func (s *Server) consoleHistoryView(w http.ResponseWriter, r *http.Request) {
@@ -34,15 +44,10 @@ func (s *Server) consoleHistoryView(w http.ResponseWriter, r *http.Request) {
 UNION ALL SELECT agent_id,kind,record_id,received_at_ns,json_extract(payload,'$.event'),0,'event' FROM records WHERE kind='event_bundle'`
 		typePath = "$.event_type"
 	} else if view == "detections" {
-		projection = `SELECT agent_id,kind AS source_kind,record_id,received_at_ns,payload,0 AS item,'finding' AS display_kind FROM records WHERE kind='finding'
-UNION ALL SELECT r.agent_id,r.kind,r.record_id,r.received_at_ns,j.value,CAST(j.key AS INTEGER),'finding' FROM records r,json_each(r.payload,'$.findings') j WHERE r.kind='event_bundle'`
+		projection = detectionHistoryProjection
 		typePath = "$.rule_id"
 	}
-	rows, err := s.store.db.QueryContext(r.Context(), `WITH history AS (`+projection+`) SELECT agent_id,display_kind,record_id,received_at_ns,payload,source_kind,item FROM history
-WHERE (?='' OR agent_id=?) AND (?=0 OR received_at_ns>=?) AND (?=0 OR received_at_ns<?)
-AND (?='' OR json_extract(payload,?)=?) AND (?='' OR instr(lower(CAST(payload AS TEXT)),lower(?))>0)
-AND (?=0 OR (received_at_ns,agent_id,source_kind,record_id,item)<(?,?,?,?,?))
-ORDER BY received_at_ns DESC,agent_id DESC,source_kind DESC,record_id DESC,item DESC LIMIT ?`,
+	rows, err := s.store.db.QueryContext(r.Context(), fmt.Sprintf(historyPageQuery, projection),
 		filter.Agent, filter.Agent, from, from, until, until, filter.Type, typePath, filter.Type, filter.Search, filter.Search, cursor.At, cursor.At, cursor.Agent, cursor.Kind, cursor.ID, cursor.Item, limit+1)
 	if err != nil {
 		s.consoleError(w, "history view query", err)

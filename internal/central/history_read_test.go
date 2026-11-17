@@ -3,6 +3,7 @@ package central
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -95,6 +96,74 @@ func TestConsoleHistoryViewsFilterAndPageBundleItems(t *testing.T) {
 	}
 	for _, query := range []string{"view=unknown", "view=events&from=not-a-date", "view=events&limit=0", "view=events&from=" + until + "&until=" + from} {
 		consoleWant(t, f.console(t, "GET", "/api/history?"+query, nil), 400, nil)
+	}
+}
+
+func TestConsoleDetectionHistorySkipsNullFindings(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		findings any
+		omitted  bool
+		want     int
+	}{
+		{name: "nil findings", findings: []model.Finding(nil)},
+		{name: "empty findings", findings: []model.Finding{}},
+		{name: "omitted findings", omitted: true},
+		{name: "null array element", findings: []any{nil}},
+		{name: "mixed null and finding", findings: []any{nil, map[string]any{"finding_id": "real-finding", "rule_id": "rule.real"}, nil}, want: 1},
+		{name: "non-array object", findings: map[string]any{"finding_id": "not-an-array", "rule_id": "rule.real"}},
+		{name: "non-object elements", findings: []any{"text", 12, true, []any{}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := setup(t)
+			base := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+			bundle := map[string]any{"event": map[string]any{"event_id": "exec-1", "event_type": "process.exec", "event_time": base}}
+			if !test.omitted {
+				bundle["findings"] = test.findings
+			}
+			addHistoryRecord(t, f, "agent-a", "event_bundle", "exec-1", base, bundle)
+			var items []HistoryRecord
+			consoleWant(t, f.console(t, "GET", "/api/history?view=detections", nil), 200, &items)
+			if len(items) != test.want {
+				t.Fatalf("projected %d findings, want %d: %+v", len(items), test.want, items)
+			}
+			for _, item := range items {
+				var finding model.Finding
+				if err := json.Unmarshal(item.Payload, &finding); err != nil || finding.ID != "real-finding" {
+					t.Fatalf("non-finding projection: %s, %v", item.Payload, err)
+				}
+			}
+			var events []HistoryRecord
+			consoleWant(t, f.console(t, "GET", "/api/history?view=events", nil), 200, &events)
+			if len(events) != 1 {
+				t.Fatalf("non-detection bundle lost its event: %+v", events)
+			}
+		})
+	}
+}
+
+func TestConsoleDetectionHistoryUsesFindingBundleIndex(t *testing.T) {
+	f := setup(t)
+	query := "EXPLAIN QUERY PLAN " + fmt.Sprintf(historyPageQuery, detectionHistoryProjection)
+	rows, err := f.store.db.Query(query, "", "", 0, 0, 0, 0, "", "$.rule_id", "", "", "", 0, 0, "", "", "", 0, 21)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var details []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err = rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		details = append(details, detail)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(details, "\n"), "records_history_detection_bundle_idx") {
+		t.Fatalf("detection paging scans non-detection bundles: %v", details)
 	}
 }
 
