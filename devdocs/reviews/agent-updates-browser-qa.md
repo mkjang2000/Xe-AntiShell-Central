@@ -51,9 +51,29 @@ keep a minimum width inside the existing scroll container. JavaScript regression
 tests cover both exclusion reasons. The final browser run included the changed
 static assets and a mobile result-row readability check.
 
+# Actual Signed RPM Integration
+
+A subsequent run used the actual public bootstrap RPM 0.1.0-23.el9.x86_64 and
+its publisher-signed public manifest against a fresh isolated backend. There was
+no route interception or injected response for this run. Seven checks passed,
+with five axe scans reporting zero violations and no page script errors:
+
+- The browser uploaded real RPM bytes. The backend verified the embedded
+  publisher signature, signed hash/size and native RPM metadata, returned 201,
+  and exposed matching verified provenance in the catalog and details.
+- A duplicate upload returned 200 and kept one immutable catalog entry.
+- A one-byte RPM mutation returned 400 and did not replace the stored artifact.
+- Unknown manifest fields failed locally without upload. Direct API attempts
+  independently rejected unknown fields and changed signed package metadata
+  with 400 responses, preserving the verified catalog entry.
+- A real operator session received 403 even with a valid signed release pair.
+
+The separate run read only the two supplied public release files and its own
+temporary fixture credentials. It performed no installation and never accessed
+the publisher private key, production services or production APIs.
+
 # Remaining Integration Work
 
-Actual publisher-signed RPM upload, a public GitHub manifest/artifact fetch and
-agent/helper installation require separate end-to-end checks. The browser review
-used only synthetic update/GitHub payloads and did not approve publication or
-operational deployment.
+A public GitHub manifest/artifact fetch and agent/helper installation still
+require separate end-to-end checks. Browser verification does not approve
+publication or operational deployment.
