@@ -1,6 +1,6 @@
 Name:           xe-antishell-central
 Version:        0.1.0
-Release:        12%{?dist}
+Release:        13%{?dist}
 Summary:        Independent Xe-AntiShell central management service
 License:        MIT AND Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND BSD-1-Clause AND SunPro
 URL:            https://github.com/mkjang2000/Xe-AntiShell-Central
@@ -52,6 +52,13 @@ getent passwd xe-antishell-central >/dev/null || useradd -r -g xe-antishell-cent
 %systemd_postun_with_restart sentinel-central.service
 
 %changelog
+* Wed Nov 18 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-13
+- Add guided opt-in global root execution and credential-change policy controls
+- Require a fresh compatible engine report before issuing privilege policies
+- Validate paired credential evidence and distinguish root recovery and capability activation
+- Preserve exact uint64 task identity strings in credential history details
+- Keep all new privilege findings detection-only without changing agent termination settings
+
 * Tue Nov 17 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-12
 - Manage bounded immutable agent RPM releases and explicit server/group update rollouts
 - Bind mTLS update plans, short install claims and durable reports to each enrollment

@@ -51,6 +51,7 @@ Xe-AntiShell-Central/
 ├── devdocs/
 │   ├── plans/independent-central.md
 │   ├── plans/privilege-detection-console.md
+│   ├── plans/central-privilege-rollout.md
 │   └── analysis/managed-v1-operations.md
 ├── third_party/licenses/          # Preserved upstream license texts
 ├── install.sh                    # Explicit source/local-RPM installation

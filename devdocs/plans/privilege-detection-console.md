@@ -43,6 +43,9 @@ when both sets are known. A present empty set is distinct from missing data.
 Root privilege recovery, new authority, and permitted-to-effective activation
 have distinct labels. Initial user namespace is not proof of container escape;
 non-host/unknown user namespace does not imply host root authority.
+Kernel `task_start_time_ns` is a positive uint64 decimal string on the wire.
+The UI validates its format and range without numeric coercion, displays it
+unchanged, and labels it as a monotonic identity value rather than calendar time.
 
 New history types and current-policy detail are available without raw JSON
 editing. Technical raw records remain available under existing access controls.
@@ -57,6 +60,9 @@ response conditions and no longer claims file/network observation is absent.
 - JavaScript tests cover opt-in/root mode round trips, disabled-field omission,
   root-only validation, supported engine vs receipt, UID0/unknown/ns/capability
   distinctions, malformed presentation, rule labels and module wiring.
+- Exact task identity tests cover values beyond JavaScript's safe integer range
+  through uint64 maximum, with numeric JSON, zero and overflow rejected at ingest
+  and malformed strings left explicitly unknown in the UI.
 - Existing roles, policies, history, accounts and update suites are retained.
 
 Production deployment, actual sensor attachment and same-task privilege change
@@ -68,8 +74,12 @@ Against the parent's protocol workspace, all three central Go packages passed
 `go test -race -count=1 ./...`; vet and static build passed. All seven browser
 test files (including new privilege and policy-control cases), installer/build
 script checks and sixteen source-check tests passed. Source inspection checked
-172 Git candidates with no issues, and diff checks passed. This is isolated
+173 Git candidates with no issues, and diff checks passed. This is isolated
 validation, not production deployment or actual kernel sensor proof.
 
 The release dependency pin must move to the published shared protocol v0.3.0
 before a normal GOWORK=off package build; the local workspace is not shipped.
+
+The RPM release 13 spec is prepared. No production service restart or package
+installation is implied by the version change. See
+[the rollout plan](central-privilege-rollout.md) for activation and rollback order.

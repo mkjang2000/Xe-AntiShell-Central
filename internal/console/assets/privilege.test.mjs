@@ -55,6 +55,13 @@ test("new privilege findings do not become intrusion or escape proof",()=>{
  const root=C.eventObservation({event_type:"process.exec",process:{uid:0,euid:0}});assert.match(text(root),/0 \/ 0/);assert.match(text(root),/범위 미확인/);
 });
 
+test("kernel task identity preserves exact uint64 decimal strings",()=>{
+ const C=model(),field=value=>C.eventObservation({event_type:"process.credential_change",credential:{task_start_time_ns:value}}).fields.find(([label])=>label==="커널 task 시작 시각(ns)")[1];
+ for(const value of ["1","9007199254740993","18446744073709551615"])assert.equal(field(value),value);
+ for(const value of [undefined,null,0,123,9007199254740992,"0","01","-1","+1","1.0","1e3","18446744073709551616","999999999999999999999","<script>"])assert.equal(field(value),"정확한 값 미확인");
+ assert.match(text(C.eventObservation({event_type:"process.credential_change",credential:{task_start_time_ns:"9007199254740993"}})),/커널 단조 시각.*달력 시각이 아닙니다/);
+});
+
 test("served module is wired before history and admitted in the static allowlist",()=>{
  const html=fs.readFileSync(new URL("index.html",import.meta.url),"utf8"),handler=fs.readFileSync(new URL("../handler.go",import.meta.url),"utf8");
  assert.ok(html.indexOf('src="/assets/model.js"')<html.indexOf('src="/assets/privilege.js"'));

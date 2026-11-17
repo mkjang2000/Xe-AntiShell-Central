@@ -18,6 +18,9 @@
     return copy ? {title: copy[0], note: copy[1]} : previousFinding(value);
   };
   const id = value => Number.isSafeInteger(value) && value >= 0 && value < 4294967295 ? String(value) : "미수집";
+  // Nanoseconds exceed JavaScript's safe integer range on long-running hosts.
+  // Keep the protocol's uint64 decimal string intact rather than coercing it.
+  const taskStart = value => typeof value === "string" && /^[1-9][0-9]{0,19}$/.test(value) && (value.length < 20 || value <= "18446744073709551615") ? value : "정확한 값 미확인";
   const capabilities = value => Array.isArray(value) && value.length <= 64 && value.every(item => typeof item === "string" && /^CAP_[A-Z0-9_]{1,63}$/.test(item)) ? [...new Set(value)] : null;
   const list = value => value === null ? "미수집" : value.length ? value.join(" · ") : "없음 (빈 집합 확인)";
   const ns = value => {
@@ -57,6 +60,8 @@
       ["변경 후 사용자 namespace", ns(after.user_namespace)],
       ["적용 결과", Object.hasOwn(outcome, value.outcome) && (value.outcome !== "applied" || value.before && value.after && value.return_value === 0) ? outcome[value.outcome] : "적용 여부 미확인"],
       ["TGID / TID", `${id(value.tgid)} / ${id(value.tid)}`],
+      ["커널 task 시작 시각(ns)", taskStart(value.task_start_time_ns)],
+      ["task 시각 범위", "동일 task 식별을 위한 커널 단조 시각입니다. 달력 시각이 아닙니다."],
       ["관측 근거", value.evidence === "tetragon_commit_creds_pair" ? "동일 commit_creds 호출의 직접 전후 자격 정보" : "미확인"],
       ["수집 정책", value.policy_name === "xeas-credential-change-v1" ? "Xe-AntiShell 고정 권한 변경 정책" : "미확인"],
       ["원래 반환값", Number.isSafeInteger(value.return_value) ? String(value.return_value) : "미수집"],
