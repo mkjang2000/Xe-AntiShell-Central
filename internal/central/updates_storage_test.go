@@ -76,16 +76,16 @@ func TestUpdateStorageDatabaseFailureAndCorruptionStayInvisible(t *testing.T) {
 	}
 }
 
-func TestUpdateAdditiveSchemaKeepsLegacyVersion(t *testing.T) {
+func TestUpdateFeatureSchemaSurvivesCentralHistoryVersion(t *testing.T) {
 	f := updateFixture(t)
-	var legacy, feature int
-	if err := f.store.db.QueryRow("PRAGMA user_version").Scan(&legacy); err != nil {
+	var version, feature int
+	if err := f.store.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.store.db.QueryRow("SELECT version FROM feature_schema WHERE name='agent_updates'").Scan(&feature); err != nil {
 		t.Fatal(err)
 	}
-	if legacy != 2 || feature != 1 {
-		t.Fatal("legacy central rollback schema changed")
+	if version != 4 || feature != 1 {
+		t.Fatal("central schema or independent update feature version changed")
 	}
 }

@@ -101,7 +101,7 @@ func TestConsoleSchemaUpgradePreservesVersionOneState(t *testing.T) {
 	defer store.Close()
 	var version, revision, cursor int
 	var signed, certificate string
-	if err = store.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 2 {
+	if err = store.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 4 {
 		t.Fatalf("schema version=%d error=%v", version, err)
 	}
 	if err = store.db.QueryRow("SELECT desired_policy_revision FROM agents WHERE agent_id='legacy'").Scan(&revision); err != nil || revision != 7 {

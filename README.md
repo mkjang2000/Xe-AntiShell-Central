@@ -262,6 +262,40 @@ sudo sentinel-central enrollment-token \
 등록, 서명 정책, 조회, 에이전트 삭제 승인과 오프라인 복구 절차는
 [Managed v1 운영 문서](devdocs/analysis/managed-v1-operations.md)를 따른다.
 
+## 일반 관측 이력 보존
+
+센트럴은 수신 데이터를 검증한 뒤 구조화된 관측과 탐지 결과를 보존합니다.
+새 기록에서는 원문 JSON, 프로세스 인자·작업 디렉터리, 반복되는 조상 스냅샷을
+제외합니다. 일반 관측은 중앙 수신 시각부터 1시간이 지나면 순차 정리합니다.
+탐지와 연결된 근거, 감사 로그, 등록·정책·업데이트 상태, 전송 ACK와 무결성
+다이제스트는 그대로 보존합니다. 이전 버전의 데이터는 기동 후 작은 범위로
+나눠 분류합니다.
+
+삭제한 페이지는 SQLite의 후속 저장에 재사용됩니다. 파일 자체의 축소는
+`auto_vacuum=INCREMENTAL` DB에서 제한적으로 실행됩니다. 이전 DB 변환과
+롤백 범위는 [이력 보존 설계](devdocs/plans/minimal-observation-history.md)에
+기록했습니다.
+
+## 센트럴 디스크 용량 확인
+
+`sentinel-central capacity`는 로컬 상태 디렉터리에서 DB 파일, WAL, SQLite가
+사용 중인 페이지와 재사용 가능한 빈 페이지, 파일시스템 가용량, 한 시간 만료
+기준을 넘긴 지연 시간과 누적 전송 순번을 JSON으로 출력합니다. 파일 크기와
+사용 중인 페이지의 차이는 다음 쓰기에서 재사용할 수 있는 공간 및 WAL
+체크포인트 시점의 영향을 받습니다. 원하는 간격으로 두 번 실행하면 증가분을
+비교할 수 있습니다. 별도 데이터 수집이나 에이전트 업데이트는 필요하지 않습니다.
+
+```sh
+sudo -u xe-antishell-central /usr/sbin/sentinel-central capacity
+sudo -u xe-antishell-central /usr/sbin/sentinel-central capacity --min-free-bytes 10737418240
+```
+
+서비스 계정으로 실행하면 SQLite가 공유 메모리 등 WAL 보조 파일을 열거나
+생성할 때 서비스와 같은 권한을 사용합니다. 두 번째 예시는 가용량이 10 GiB 미만이면 같은 보고서를 출력한 뒤 실패 상태로
+종료합니다. 읽기 전용 조회는 스키마 3과 4에서 동작합니다. RPM 17은 기존
+영수증을 제자리에서 유지하고 새 순번부터 짧은 영수증을 저장합니다. 스키마 4의
+복구 조건과 측정값은 [수신 영수증 용량 관리](devdocs/plans/compact-delivery-receipts.md)에 있습니다.
+
 ## 업그레이드와 데이터 보존
 
 패널의 에이전트 업데이트는 서버·그룹별 대상과 제외 사유를 먼저 확인한 뒤

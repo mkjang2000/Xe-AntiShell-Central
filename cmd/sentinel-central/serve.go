@@ -138,6 +138,16 @@ func serve(args []string, stderr io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	historyCtx, stopHistory := context.WithCancel(ctx)
+	historyDone := make(chan struct{})
+	go func() {
+		defer close(historyDone)
+		store.MaintainObservationHistory(historyCtx, logger)
+	}()
+	defer func() {
+		stopHistory()
+		<-historyDone
+	}()
 	logger.Info("central service started", "agent_https", *agentAddress, "operator_api", *adminAddress)
 	var serveError error
 	select {
@@ -147,6 +157,7 @@ func serve(args []string, stderr io.Writer) error {
 			serveError = err
 		}
 	}
+	stopHistory()
 	shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for _, server := range servers {

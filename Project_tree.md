@@ -20,6 +20,9 @@ Xe-AntiShell-Central/
 ├── internal/central/              # PKI, SQLite, agent and operator HTTP APIs
 │   ├── enrollment_code.go        # Certificate-bound endpoint config and installation-code issuance
 │   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
+│   ├── delivery_receipts.go      # Compact per-stream replay checks and schema 4 cursor migration
+│   ├── capacity.go               # On-demand read-only storage and expiry statistics
+│   ├── history_retention.go      # Ingest projection, immutable digests and bounded ordinary-history expiry
 │   ├── history_read.go           # Separate finding/event/error/audit projections
 │   ├── history_query.go          # Literal JSON filters, bounded metadata branches and compatible cursors
 │   ├── history_reader.go         # Isolated read-only WAL pool, deadlines and legacy admin reads
@@ -57,6 +60,8 @@ Xe-AntiShell-Central/
 │   ├── plans/independent-central.md
 │   ├── plans/privilege-detection-console.md
 │   ├── plans/central-privilege-rollout.md
+│   ├── plans/compact-delivery-receipts.md
+│   ├── plans/minimal-observation-history.md
 │   ├── plans/history-query-performance.md
 │   ├── plans/password-policy.md
 │   └── analysis/managed-v1-operations.md
@@ -113,8 +118,9 @@ Authenticated console → installation code with public CA → agent wizard → 
 - Console accounts persist in a separate private `panel-accounts.db`; the legacy
   auth file seeds the initial administrator only once. Password/role changes
   rotate account session keys. All API mutations enforce roles and CSRF.
-- Central records retain their original immutable payloads; finding/event views
-  project individual items before filtering/pagination. Operational error history
+- Central validates canonical wire payloads before storing minimal observations.
+  Per-spool sequence receipts and expired ID digests protect replay integrity.
+  Finding/event views project individual items before filtering/pagination. Operational error history
   stores categories and transitions, preserving no historical raw diagnostics.
 - History uses one dedicated read-only WAL connection with a three-second deadline.
   Literal event-type expression indexes and branch-local filters/limits select only

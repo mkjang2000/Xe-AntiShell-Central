@@ -15,7 +15,7 @@ const historyQueryTimeout = 3 * time.Second
 
 var errHistoryTimeout = errors.New("history query deadline exceeded")
 
-// Small indexed keys only; canonical event/bundle payloads are never rewritten.
+// Small indexed keys keep history filters independent of the returned payload.
 const historyReadSchema = `
 CREATE INDEX IF NOT EXISTS records_history_event_type_idx ON records(json_extract(payload,'$.event_type'),received_at_ns DESC,agent_id DESC,record_id DESC) WHERE kind='event';
 CREATE INDEX IF NOT EXISTS records_history_bundle_event_type_idx ON records(json_extract(payload,'$.event.event_type'),received_at_ns DESC,agent_id DESC,record_id DESC) WHERE kind='event_bundle';
@@ -24,6 +24,14 @@ CREATE INDEX IF NOT EXISTS records_history_bundle_event_agent_type_idx ON record
 `
 
 func (s *Store) openHistoryReader(ctx context.Context, path string) error {
+	db, err := openHistoryReadPool(ctx, path)
+	if err == nil {
+		s.historyDB = db
+	}
+	return err
+}
+
+func openHistoryReadPool(ctx context.Context, path string) (*sql.DB, error) {
 	u := &url.URL{Scheme: "file", Path: path}
 	q := u.Query()
 	q.Set("mode", "ro")
@@ -32,16 +40,15 @@ func (s *Store) openHistoryReader(ctx context.Context, path string) error {
 	u.RawQuery = q.Encode()
 	db, err := sql.Open("sqlite", u.String())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	if err = db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return err
+		return nil, err
 	}
-	s.historyDB = db
-	return nil
+	return db, nil
 }
 
 func historyRequest(r *http.Request) (*http.Request, context.CancelFunc) {

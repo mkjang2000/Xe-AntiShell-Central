@@ -219,7 +219,7 @@ func TestHistoryMigrationPreservesEvidenceAndClosesReader(t *testing.T) {
 	}
 	var version int
 	store.db.QueryRow("PRAGMA user_version").Scan(&version)
-	if version != 2 {
+	if version != 4 {
 		t.Fatal("unexpected schema version change")
 	}
 	reader := store.historyDB

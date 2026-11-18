@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,9 +35,12 @@ func (s *Store) Ingest(ctx context.Context, agentID string, batch managed.Batch,
 	if _, err = tx.ExecContext(ctx, "INSERT INTO delivery_cursors(agent_id,enrollment_id,spool_id) VALUES(?,?,?) ON CONFLICT DO NOTHING", agentID, batch.EnrollmentID, batch.SpoolID); err != nil {
 		return ack, err
 	}
-	if err = tx.QueryRowContext(ctx, "SELECT acknowledged FROM delivery_cursors WHERE agent_id=? AND enrollment_id=? AND spool_id=?", agentID, batch.EnrollmentID, batch.SpoolID).Scan(&ack.Acknowledged); err != nil {
+	var spoolKey int64
+	var legacyThrough uint64
+	if err = tx.QueryRowContext(ctx, "SELECT spool_key,legacy_through,acknowledged FROM delivery_cursors WHERE agent_id=? AND enrollment_id=? AND spool_id=?", agentID, batch.EnrollmentID, batch.SpoolID).Scan(&spoolKey, &legacyThrough, &ack.Acknowledged); err != nil {
 		return ack, err
 	}
+	through := ack.Acknowledged
 	var previous uint64
 	for _, record := range batch.Records {
 		if record.Sequence == 0 || record.Sequence > math.MaxInt64 || record.Sequence <= previous {
@@ -50,38 +52,25 @@ func (s *Store) Ingest(ctx context.Context, agentID string, batch managed.Batch,
 			return ack, fmt.Errorf("%w: %v", ErrInvalid, err)
 		}
 		digest := sha256.Sum256(body)
-		hash := hex.EncodeToString(digest[:])
-		if record.Sequence <= ack.Acknowledged {
-			var kind, id, oldHash string
-			err = tx.QueryRowContext(ctx, "SELECT kind,record_id,payload_hash FROM deliveries WHERE agent_id=? AND enrollment_id=? AND spool_id=? AND sequence=?", agentID, batch.EnrollmentID, batch.SpoolID, record.Sequence).Scan(&kind, &id, &oldHash)
-			if err != nil || kind != record.Kind || id != record.ID || oldHash != hash {
-				return ack, ErrConflict
+		if record.Sequence <= through {
+			if err := verifyDeliveryReceipt(ctx, tx, spoolKey, legacyThrough, agentID, batch, record, digest); err != nil {
+				return ack, err
 			}
 			continue
 		}
-		if record.Sequence != ack.Acknowledged+1 {
+		if record.Sequence != through+1 {
 			return ack, fmt.Errorf("%w: non-contiguous delivery sequence", ErrConflict)
 		}
-		result, err := tx.ExecContext(ctx, "INSERT INTO records(agent_id,kind,record_id,payload,received_at_ns) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING", agentID, record.Kind, record.ID, body, now.UnixNano())
-		if err != nil {
+		if err := persistHistoryRecord(ctx, tx, agentID, record, body, digest, now); err != nil {
 			return ack, err
 		}
-		inserted, _ := result.RowsAffected()
-		if inserted == 0 {
-			var oldBody []byte
-			if err = tx.QueryRowContext(ctx, "SELECT payload FROM records WHERE agent_id=? AND kind=? AND record_id=?", agentID, record.Kind, record.ID).Scan(&oldBody); err != nil {
-				return ack, err
-			}
-			if !bytes.Equal(oldBody, body) {
-				return ack, ErrConflict
-			}
-		}
-		if _, err = tx.ExecContext(ctx, "INSERT INTO deliveries(agent_id,enrollment_id,spool_id,sequence,kind,record_id,payload_hash) VALUES(?,?,?,?,?,?,?)", agentID, batch.EnrollmentID, batch.SpoolID, record.Sequence, record.Kind, record.ID, hash); err != nil {
+		receipt := deliveryReceipt(record.Kind, record.ID, digest)
+		if _, err = tx.ExecContext(ctx, "INSERT INTO delivery_receipts(spool_key,sequence,receipt) VALUES(?,?,?)", spoolKey, record.Sequence, receipt[:]); err != nil {
 			return ack, err
 		}
-		ack.Acknowledged = record.Sequence
+		through = record.Sequence
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE delivery_cursors SET acknowledged=? WHERE agent_id=? AND enrollment_id=? AND spool_id=?", ack.Acknowledged, agentID, batch.EnrollmentID, batch.SpoolID); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE delivery_cursors SET acknowledged=? WHERE spool_key=?", through, spoolKey); err != nil {
 		return ack, err
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE agents SET last_seen_at_ns=? WHERE agent_id=?", now.UnixNano(), agentID); err != nil {
@@ -90,6 +79,7 @@ func (s *Store) Ingest(ctx context.Context, agentID string, batch managed.Batch,
 	if err = tx.Commit(); err != nil {
 		return managed.Ack{SpoolID: batch.SpoolID}, err
 	}
+	ack.Acknowledged = through
 	return ack, nil
 }
 

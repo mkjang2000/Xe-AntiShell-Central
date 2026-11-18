@@ -68,11 +68,11 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	if version > 2 {
+	if version > 4 {
 		_ = db.Close()
 		return nil, errors.New("central database schema is newer than this binary")
 	}
-	if err = store.initializeSchema(ctx); err != nil {
+	if err = store.initializeSchema(ctx, version); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	return store, nil
 }
 
-func (s *Store) initializeSchema(ctx context.Context) error {
+func (s *Store) initializeSchema(ctx context.Context, version int) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -140,8 +140,18 @@ func (s *Store) initializeSchema(ctx context.Context) error {
 	if updateVersion != 1 {
 		return errors.New("central update schema is newer than this binary")
 	}
-	if _, err = tx.ExecContext(ctx, "PRAGMA user_version=2"); err != nil {
-		return err
+	if version < 3 {
+		if _, err = tx.ExecContext(ctx, historyRetentionSchema); err != nil {
+			return err
+		}
+	}
+	if version < 4 {
+		if _, err = tx.ExecContext(ctx, deliveryReceiptSchema); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=4"); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

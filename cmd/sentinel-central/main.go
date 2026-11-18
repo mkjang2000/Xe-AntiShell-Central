@@ -35,6 +35,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return enrollmentToken(args[1:], stdout, stderr)
 	case "init-panel":
 		return initializePanel(args[1:], stdout, stderr)
+	case "capacity":
+		return capacity(args[1:], stdout, stderr)
 	case "serve":
 		return serve(args[1:], stderr)
 	case "version":
@@ -112,6 +114,7 @@ Commands:
   init              Create private CA, server certificate, signing key and operator credential
   enrollment-token  Create a per-agent, expiring single-use enrollment credential file
   init-panel        Create web administrator credentials and a private initial password file
+  capacity          Sample database, delivery and filesystem usage as JSON
   serve             Run agent/operator APIs and the optional management console
   version`)
 }
