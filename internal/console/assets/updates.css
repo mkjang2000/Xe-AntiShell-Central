@@ -54,3 +54,11 @@
   .update-actions button { min-height: 34px; }
   .update-dialog .selection-box { max-height: 200px; }
 }
+
+.central-update { margin-bottom: 18px; }
+.central-update summary { cursor: pointer; font-weight: 650; }
+.central-update[open] summary { margin-bottom: 15px; }
+.central-update-source { margin-top: 15px; }
+.central-update-source legend { font-weight: 600; }
+.central-update-source input[type=file] { max-width: 100%; }
+.central-update .facts dd { overflow-wrap: anywhere; }

@@ -1,0 +1,107 @@
+name: Build central release candidates
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*-r*'
+
+# This workflow cannot publish releases or access a publisher private key.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unsigned-rpm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        el: ['9', '10']
+    env:
+      GOTOOLCHAIN: local
+      XEAS_EL_MAJOR: ${{ matrix.el }}
+    steps:
+      - name: Check out source without stored Git credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up the read-only container Go SDK
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+          cache: false
+      - name: Check the committed public source
+        run: python3 scripts/check-source.py
+      - name: Build an unsigned EL RPM in bounded userspace
+        shell: bash
+        env:
+          XEAS_REF_TYPE: ${{ github.ref_type }}
+          XEAS_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          build_work=$(mktemp -d "$RUNNER_TEMP/xeas-release.XXXXXX")
+          container_name="xeas-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-el${XEAS_EL_MAJOR}"
+          trap 'docker rm -f "$container_name" >/dev/null 2>&1 || true; rm -rf -- "$build_work"' EXIT
+          mkdir -p "$build_work/source" "$GITHUB_WORKSPACE/dist/unsigned-el${XEAS_EL_MAJOR}"
+          git archive --format=tar HEAD | tar -xf - -C "$build_work/source"
+          output_dir="$GITHUB_WORKSPACE/dist/unsigned-el${XEAS_EL_MAJOR}"
+          image="quay.io/rockylinux/rockylinux:${XEAS_EL_MAJOR}"
+          docker pull --platform linux/amd64 "$image"
+          image_id=$(docker image inspect --format '{{.Id}}' "$image")
+          docker image inspect --format '{{json .RepoDigests}}' "$image" > "$output_dir/base-image-digests.json"
+          git rev-parse HEAD > "$output_dir/source-commit.txt"
+          go version > "$output_dir/go-version.txt"
+          release_tag=''
+          if [[ "$XEAS_REF_TYPE" == tag ]]; then release_tag=$XEAS_REF_NAME; fi
+          docker run --rm -i --name "$container_name" --platform linux/amd64 \
+            --cpus 2 --memory 4g --pids-limit 256 --stop-timeout 10 \
+            --security-opt no-new-privileges --cap-drop NET_RAW --cap-drop MKNOD \
+            --mount "type=bind,src=$build_work/source,dst=/input,readonly" \
+            --mount "type=bind,src=$(go env GOROOT),dst=/usr/local/go,readonly" \
+            --mount "type=bind,src=$output_dir,dst=/output" \
+            --env GOTOOLCHAIN=local --env GOWORK=off --env CGO_ENABLED=0 \
+            --env GOMAXPROCS=2 --env GOFLAGS=-p=2 \
+            --env GOCACHE=/tmp/go-cache --env GOPATH=/tmp/go-modules \
+            --env "XEAS_EL_MAJOR=$XEAS_EL_MAJOR" --env "XEAS_RELEASE_TAG=$release_tag" \
+            "$image_id" /bin/bash -euo pipefail -s <<'CONTAINER'
+          export PATH=/usr/local/go/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          source /etc/os-release
+          [[ "$ID" == rocky && "${VERSION_ID%%.*}" == "$XEAS_EL_MAJOR" ]]
+          [[ $(uname -m) == x86_64 ]]
+          dnf -y --setopt=install_weak_deps=False install \
+            rpm-build systemd-rpm-macros make git python3 tar gzip findutils
+          mkdir /work
+          cp -a /input/. /work/
+          cd /work
+          python3 scripts/check-source.py
+          scripts/build-rpm.sh --output-dir /output
+          mapfile -t packages < <(find /output -maxdepth 1 -type f -name 'xe-antishell-central-*.rpm')
+          [[ ${#packages[@]} == 1 ]]
+          package=${packages[0]}
+          rpm -K "$package"
+          header=$(rpm -qp --qf '%{NAME}|%{EPOCHNUM}|%{VERSION}|%{RELEASE}|%{ARCH}' -- "$package")
+          IFS='|' read -r name epoch version release arch <<< "$header"
+          [[ "$name" == xe-antishell-central && "$epoch" == 0 && "$arch" == x86_64 && "$release" == *".el$XEAS_EL_MAJOR" ]]
+          if [[ -n "$XEAS_RELEASE_TAG" ]]; then
+            [[ "$XEAS_RELEASE_TAG" == "v$version-r${release%%.*}" ]]
+          fi
+          rpm -qp --requires "$package" > /output/rpm-requires.txt
+          rpm -qp --scripts "$package" > /output/rpm-scriptlets.txt
+          rpm -qpl "$package" > /output/rpm-files.txt
+          cp /etc/os-release /output/build-os-release.txt
+          cp LICENSE THIRD_PARTY_NOTICES.md /output/
+          tar -czf /output/third-party-licenses.tar.gz third_party/licenses
+          CONTAINER
+      - name: Store unsigned candidates for local publisher review
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-central-el${{ matrix.el }}-amd64
+          path: dist/unsigned-el${{ matrix.el }}/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7

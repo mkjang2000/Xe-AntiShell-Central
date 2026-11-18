@@ -40,6 +40,10 @@ func (s *Server) ConsoleHandler() http.Handler {
 	// Consumption and single-operation replay protection remain agent duties.
 	mux.HandleFunc("POST /api/removal", s.consoleRemoval)
 	mux.HandleFunc("POST /api/revoke", s.consoleRevoke)
+	mux.HandleFunc("GET "+centralUpdateBase+"status", s.consoleSelfUpdate)
+	mux.HandleFunc("GET "+centralUpdateBase+"releases", s.consoleSelfUpdate)
+	mux.HandleFunc("POST "+centralUpdateBase+"github", s.consoleSelfUpdate)
+	mux.HandleFunc("POST "+centralUpdateBase+"upload", s.consoleSelfUpdate)
 	mux.HandleFunc("GET /api/updates/releases", s.consoleUpdateReleases)
 	mux.HandleFunc("POST /api/updates/releases", s.consoleUpdateReleases)
 	mux.HandleFunc("POST /api/updates/releases/{id}/delete", s.consoleDeleteUpdateRelease)

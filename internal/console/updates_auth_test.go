@@ -18,6 +18,8 @@ func TestUpdateRolesAndStreamingBodyLimit(t *testing.T) {
 		method, path string
 		adminOnly    bool
 	}{
+		{"GET", "/api/central-update/status", true}, {"GET", "/api/central-update/releases", true},
+		{"POST", "/api/central-update/github", true}, {"POST", "/api/central-update/upload", true},
 		{"POST", "/api/updates/releases", true}, {"POST", "/api/updates/releases/digest/delete", true}, {"POST", "/api/updates/github/import", true},
 		{"POST", "/api/policy-trials", false}, {"POST", "/api/policy-trials/trial-one/report", false}, {"POST", "/api/policy-trials/trial-one/preview", false}, {"POST", "/api/policy-trials/trial-one/apply", false},
 		{"POST", "/api/updates/preview", false}, {"POST", "/api/updates/rollouts", false}, {"POST", "/api/updates/rollouts/rollout-a/cancel", false},
@@ -78,7 +80,19 @@ func TestUpdateRolesAndStreamingBodyLimit(t *testing.T) {
 	if response := request("/api/updates/github/import", admin, true); response.Code != 413 {
 		t.Fatal("GitHub import bypassed ordinary JSON cap")
 	}
+	if response := request("/api/central-update/upload", admin, true); response.Code != 200 {
+		t.Fatal("central RPM upload retained ordinary JSON cap")
+	}
 	before := called
+	if response := request("/api/central-update/upload", admin, false); response.Code != 403 {
+		t.Fatal("central upload bypassed CSRF")
+	}
+	if response := request("/api/central-update/upload", nil, false); response.Code != 401 {
+		t.Fatal("anonymous central upload reached backend")
+	}
+	if response := request("/api/central-update/upload", operator, true); response.Code != 403 {
+		t.Fatal("operator central upload reached backend")
+	}
 	if response := request("/api/updates/releases", operator, true); response.Code != 403 {
 		t.Fatal("operator upload reached backend")
 	}

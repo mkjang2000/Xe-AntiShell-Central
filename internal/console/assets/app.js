@@ -15,7 +15,7 @@
     policies:["보안 정책","POLICY CONTROL","정책을 저장하고 배포 대상을 미리 확인한 후 적용합니다."],
     history:["탐지·실행 이력","DETECTION & HISTORY","중앙에 전달된 탐지 근거와 실행 기록을 검토합니다."],
     approvals:["등록·제거 승인","ENROLLMENT & APPROVALS","단일 서버 설치 토큰과 일회용 제거 승인을 발급합니다."],
-    updates:["에이전트 업데이트","AGENT UPDATES","검토한 RPM과 서버별 설치 상태를 확인하고 업데이트를 배포합니다."],
+    updates:["업데이트","UPDATES","센트럴과 에이전트의 설치 상태를 확인하고 업데이트를 진행합니다."],
     audit:["감사 기록","OPERATOR AUDIT","기간별 중앙 관리 작업과 에이전트 감사 기록을 확인합니다."],
     accounts:["계정 관리","ACCOUNT MANAGEMENT","콘솔 계정과 권한을 관리하고 본인 비밀번호를 변경합니다."]
   };
@@ -89,7 +89,7 @@
   globalThis.addEventListener("pagehide",clearSecret);
   globalThis.addEventListener("hashchange",navigate);
   globalThis.addEventListener("beforeunload",event=>{if(C.hasUnsavedPolicy()||C.hasUnsavedGroup()){event.preventDefault();event.returnValue="";}});
-  C.initFleet();C.initOperations();C.initHistory();C.initPolicy();C.initAccounts();C.initUpdates?.();navigate();
+  C.initFleet();C.initOperations();C.initHistory();C.initPolicy();C.initAccounts();C.initUpdates?.();C.initCentralUpdate?.();navigate();
   (async()=>{
     try{C.session=await C.request("/api/session");C.text("sessionUser",C.session.username);C.applyAccess();started=true;await C.refresh();navigate();}
     catch(error){C.error(error);}

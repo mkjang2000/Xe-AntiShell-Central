@@ -2,6 +2,7 @@
 
 BUILD_DIR ?= build
 RPM_OUTPUT_DIR ?= dist/rpm
+CENTRAL_VERSION ?= 0.1.0-dev
 
 build:
 	mkdir -p "$(BUILD_DIR)"
@@ -22,7 +23,7 @@ vet:
 
 static:
 	mkdir -p "$(BUILD_DIR)"
-	CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags='-s -w' -o "$(BUILD_DIR)/sentinel-central" ./cmd/sentinel-central
+	CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags='-s -w -X main.binaryVersion=$(CENTRAL_VERSION)' -o "$(BUILD_DIR)/sentinel-central" ./cmd/sentinel-central
 
 check-tools:
 	@for tool in go gofmt git python3 node; do \
@@ -43,7 +44,7 @@ format-check:
 		if [ -n "$$files" ]; then printf 'Run gofmt on:\n%s\n' "$$files" >&2; exit 1; fi
 
 test-scripts:
-	@for script in install.sh packaging/install_test.sh scripts/*.sh; do bash -n "$$script" || exit 1; done
+	@for script in install.sh packaging/install_test.sh packaging/bootstrap-central.sh.in scripts/*.sh; do bash -n "$$script" || exit 1; done
 	bash packaging/install_test.sh
 	bash scripts/build_rpm_test.sh
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p check_source_test.py

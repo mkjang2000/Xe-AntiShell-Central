@@ -328,12 +328,12 @@
   };
   C.request = async (path, options = {}) => {
     const method = options.method || "GET", controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMS || 20000);
     try {
-      const headers = {Accept: "application/json"};
+      const headers = {...options.headers, Accept: "application/json"};
       if (options.body !== undefined) headers["Content-Type"] = "application/json";
       if (method !== "GET") headers["X-CSRF-Token"] = C.session ? C.session.csrf_token : "";
-      const response = await fetch(path, {method, headers, credentials: "same-origin", cache: "no-store", signal: controller.signal, ...(options.body !== undefined ? {body: JSON.stringify(options.body)} : {})});
+      const response = await fetch(path, {method, headers, credentials: "same-origin", cache: "no-store", signal: controller.signal, ...(options.body !== undefined ? {body: JSON.stringify(options.body)} : options.rawBody !== undefined ? {body: options.rawBody} : {})});
       if (response.status === 401) { root.location.assign("/login"); throw new Error("세션이 만료되었습니다. 다시 로그인하세요."); }
       let body = null;
       if (response.status !== 204) { try { body = await response.json(); } catch (_) { if (response.ok) throw new Error("서버 응답 형식을 확인할 수 없습니다."); } }

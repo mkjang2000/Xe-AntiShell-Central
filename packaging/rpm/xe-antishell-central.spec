@@ -1,6 +1,6 @@
 Name:           xe-antishell-central
 Version:        0.1.0
-Release:        19%{?dist}
+Release:        20%{?dist}
 Summary:        Independent Xe-AntiShell central management service
 License:        MIT AND Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND BSD-1-Clause AND SunPro
 URL:            https://github.com/mkjang2000/Xe-AntiShell-Central
@@ -10,6 +10,7 @@ BuildRequires:  make
 BuildRequires:  systemd
 Requires(pre):  shadow-utils
 Requires:       rpm
+Requires:       tar
 
 %global debug_package %{nil}
 
@@ -23,11 +24,13 @@ web console provides fleet monitoring and explicit policy/group administration.
 %autosetup
 
 %build
-GOTOOLCHAIN=local GOWORK=off %{__make} static
+GOTOOLCHAIN=local GOWORK=off %{__make} static CENTRAL_VERSION=%{version}-%{release}.%{_arch}
 
 %install
 install -D -m 0755 build/sentinel-central %{buildroot}%{_sbindir}/sentinel-central
 install -D -m 0644 packaging/systemd/sentinel-central.service %{buildroot}%{_unitdir}/sentinel-central.service
+install -D -m 0644 packaging/systemd/sentinel-central-updater.service %{buildroot}%{_unitdir}/sentinel-central-updater.service
+install -D -m 0644 packaging/systemd/sentinel-central-updater.socket %{buildroot}%{_unitdir}/sentinel-central-updater.socket
 install -d -m 0700 %{buildroot}%{_localstatedir}/lib/xe-antishell-central
 
 %files
@@ -35,6 +38,8 @@ install -d -m 0700 %{buildroot}%{_localstatedir}/lib/xe-antishell-central
 %license LICENSE THIRD_PARTY_NOTICES.md third_party/licenses
 %{_sbindir}/sentinel-central
 %{_unitdir}/sentinel-central.service
+%{_unitdir}/sentinel-central-updater.service
+%{_unitdir}/sentinel-central-updater.socket
 # Preserve the legacy root-owned directory; systemd StateDirectory sets runtime ownership.
 %dir %attr(0700,root,root) %{_localstatedir}/lib/xe-antishell-central
 
@@ -46,12 +51,16 @@ getent passwd xe-antishell-central >/dev/null || useradd -r -g xe-antishell-cent
 %systemd_post sentinel-central.service
 
 %preun
-%systemd_preun sentinel-central.service
+%systemd_preun sentinel-central.service sentinel-central-updater.socket sentinel-central-updater.service
 
 %postun
 %systemd_postun_with_restart sentinel-central.service
 
 %changelog
+* Thu Nov 19 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-20
+- Update the central server from verified GitHub releases or locally supplied packages
+- Back up state before installation and report the outcome through the CLI and console
+
 * Thu Nov 19 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-19
 - Gate service rule controls and staged policy trials on per-agent capabilities
 - Compare agent measurements with signed RPM and approved configuration baselines

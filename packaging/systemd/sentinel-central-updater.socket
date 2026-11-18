@@ -1,0 +1,12 @@
+[Unit]
+Description=Xe-AntiShell Central update control socket
+
+[Socket]
+ListenStream=/run/xe-antishell-central-updater.sock
+SocketUser=root
+SocketGroup=xe-antishell-central
+SocketMode=0660
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=Xe-AntiShell Central package updater
+Requires=sentinel-central-updater.socket
+After=local-fs.target sentinel-central-updater.socket
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/sentinel-central update-worker
+User=root
+Group=root
+StateDirectory=xe-antishell-central-updater
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=on-failure
+RestartSec=2s

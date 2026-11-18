@@ -6,6 +6,7 @@
     C.text("sessionUser", `${C.session?.username || ""} · ${roleNames[role] || "조회자"}`);
     C.text("accountsNavLabel", role === "admin" ? "계정 관리" : "내 계정");
     C.applyUpdateAccess?.();
+    C.applyCentralUpdateAccess?.();
     if (role === "admin" || role === "operator") return;
     for (const id of ["groupForm","templateForm","previewForm","enrollmentForm","removalForm","revokeForm"]) {
       const form = C.id(id);

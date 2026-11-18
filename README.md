@@ -8,7 +8,7 @@
 한국어 중앙 웹패널에서 서버 현황과 기능 지원 상태, 탐지 이력, 정책·그룹,
 등록 토큰 및 일회용 삭제 승인을 관리한다. 관리자·운영자·조회자 계정과
 권한을 지원한다. 자동 인증서 갱신, PostgreSQL 및 중앙 서버 다중화는 후속 범위다. 에이전트 탐지와 로컬 모니터링 패널은 별도 저장소에서
-배포한다. 이 패키지는 중앙 실행 파일 하나와 전용 서비스만 설치한다.
+배포한다. 패키지는 중앙 실행 파일과 서비스, 자체 업데이트용 로컬 systemd 소켓·서비스를 설치한다.
 
 ## 빌드와 검증
 
@@ -16,7 +16,7 @@ Linux, Go 1.22 이상, GNU make, Bash, Git, Python 3.9 이상이 필요하다.
 브라우저 스크립트 검증에는 Node.js 22 이상이 필요하며 서비스 실행에는 필요하지 않다.
 검증용 race 테스트에는 C 컴파일러도 필요하다. Go 모듈은 고정 버전으로
 다운로드하며, SQLite는 `modernc.org/sqlite`의 pure Go 드라이버를 사용한다.
-공용 계약은 `github.com/mkjang2000/Xe-AntiShell/protocol v0.4.0`에 고정한다.
+공용 계약은 `github.com/mkjang2000/Xe-AntiShell/protocol v0.6.0`에 고정한다.
 
 ```sh
 make verify
@@ -46,6 +46,26 @@ PKI, DB 초기화 또는 에이전트 설정을 변경하지 않는다. 기존 `
 있으면 중앙 서비스만 활성화·시작한다. 초기 상태가 없으면 패키지만 설치하고
 아래 명시적 초기화를 안내한다. 기존 `xe-antishell` 통합 RPM이 중앙 파일을
 소유한다면 먼저 백업과 파일 소유권 이전을 포함한 별도 마이그레이션이 필요하다.
+
+## 센트럴 업데이트
+
+Rocky/RHEL 계열 9·10 x86_64에서 관리자로 콘솔의 **업데이트 → 센트럴 업데이트**를 연다. GitHub 릴리스를 선택하거나 공식 파일명의 센트럴 RPM 한 개를 업로드한다. RPM만 선택하면 GitHub에서 해당 서명 파일을 조회한다. 오프라인에서는 같은 릴리스의 `.rpm.manifest.json`을 함께 선택한다. 적용을 확인하면 서버가 상태를 백업하고 재시작한다. 다시 연결되면 결과와 설치된 버전을 확인할 수 있다.
+
+CLI에서는 아래 명령을 사용한다. `TAG`에는 `update list`에 표시된, 현재 설치본보다 높은 릴리스 태그를 넣는다.
+
+```sh
+sentinel-central update list
+sudo sentinel-central update apply --tag TAG
+sudo sentinel-central update status
+# RPM만 있으면 GitHub에서 서명 파일을 확인한다.
+sudo sentinel-central update apply --rpm /path/to/xe-antishell-central-0.1.0-20.el9.x86_64.rpm
+# 오프라인에서 설치
+sudo sentinel-central update apply --rpm /path/to/central.rpm --manifest /path/to/central.rpm.manifest.json
+```
+
+**RPM 19 이하에서 처음 전환하는 경우**에는 해당 GitHub 릴리스의 `bootstrap-central.sh`를 내려받아 `sudo bash bootstrap-central.sh --confirm`으로 실행한다. 스크립트는 포함된 SHA-256으로 RPM을 확인한 뒤 그 안의 CLI로 서명을 검증하고 백업·업데이트를 진행한다. 첫 전환 스크립트는 `curl`, `rpm2cpio`, `cpio`를 사용한다. Go 빌드 없이 사용할 수 있다. 소스에서 직접 실행하려면 체크아웃한 공식 새 릴리스 소스에서 `make static` 후 `sudo ./build/sentinel-central update bootstrap --tag TAG --confirm`을 실행한다. 첫 전환도 표준 상태 디렉터리의 일관된 백업을 만든다. RPM 16에서 전환하면 DB 스키마가 3에서 4로 올라가므로 백업 공간과 수집 중단 시간을 확보한다. 백업 복구 이후의 ACK와 정책 변경은 별도로 조정해야 한다. 성공 후에는 설치된 CLI와 웹을 그대로 사용할 수 있다.
+
+릴리스 작성자는 릴리스 태그의 GitHub Actions에서 두 EL 빌드 결과를 받아 검토한다. 해당 태그 소스에서 `scripts/prepare-central-release.sh TAG ARTIFACT_DIR PUBLISHER_KEY NEW_OUTPUT_DIR`로 생성한 RPM 두 개, 각 서명 manifest, bootstrap-central.sh와 SHA256SUMS를 같은 태그의 정식 릴리스에 게시한다. [업데이트 설계와 복구 조건](devdocs/plans/central-self-update.md)
 
 ## 최초 초기화와 실행
 

@@ -23,6 +23,7 @@
   <script src="/assets/accounts.js" defer></script>
   <script src="/assets/updates-source.js" defer></script>
   <script src="/assets/updates.js" defer></script>
+  <script src="/assets/central-update.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </head>
 <body data-page="console">
@@ -42,7 +43,7 @@
         <div class="side-label">OPERATIONS</div>
         <a href="#history" data-view="history"><span aria-hidden="true">⌕</span>탐지·실행 이력</a>
         <a href="#approvals" data-view="approvals"><span aria-hidden="true">⊕</span>등록·제거 승인</a>
-        <a href="#updates" data-view="updates"><span aria-hidden="true">↑</span>에이전트 업데이트</a>
+        <a href="#updates" data-view="updates"><span aria-hidden="true">↑</span>업데이트</a>
         <a href="#audit" data-view="audit"><span aria-hidden="true">≡</span>감사 기록</a>
         <a href="#accounts" data-view="accounts"><span aria-hidden="true">♙</span><span id="accountsNavLabel">계정 관리</span></a>
       </nav>
@@ -125,7 +126,27 @@
       </section>
 
       <section id="view-accounts" class="view" aria-label="계정 관리" hidden></section>
-      <section id="view-updates" class="view" aria-label="에이전트 업데이트" hidden></section>
+      <section id="view-updates" class="view" aria-label="업데이트" hidden>
+        <details id="centralUpdate" class="panel central-update" hidden>
+          <summary>센트럴 서버 업데이트</summary>
+          <div id="centralUpdateFacts" aria-live="polite"></div>
+          <div class="form-actions"><button id="centralStatusRefresh" type="button">상태 새로고침</button></div>
+          <fieldset class="central-update-source"><legend>GitHub 릴리즈에서 설치</legend>
+            <div class="field"><label for="centralRelease">공식 센트럴 릴리즈</label><select id="centralRelease" disabled></select></div>
+            <div class="form-actions"><button id="centralReleaseRefresh" type="button">릴리즈 조회</button><button id="centralGithubInstall" type="button" class="primary" disabled>선택한 릴리즈 설치</button></div>
+            <p id="centralCatalogNote" class="panel-note" role="status"></p>
+          </fieldset>
+          <fieldset class="central-update-source"><legend>파일에서 설치</legend>
+            <div class="form-grid">
+              <div class="field"><label for="centralRPM">센트럴 RPM</label><input type="file" id="centralRPM" accept=".rpm"></div>
+              <div class="field"><label for="centralManifest">서명 manifest (선택)</label><input type="file" id="centralManifest" accept=".json"></div>
+            </div>
+            <p class="panel-note">RPM만 선택하면 공식 GitHub 릴리즈에서 서명을 조회합니다. 오프라인에서는 해당 RPM의 manifest도 선택하세요.</p>
+            <div class="form-actions"><button id="centralUploadInstall" type="button" disabled>파일 검증 및 설치</button></div>
+          </fieldset>
+          <p id="centralUpdateMessage" class="panel-note" role="status"></p>
+        </details>
+      </section>
 
       <section id="view-approvals" class="view" aria-label="등록·제거 승인" hidden>
         <div class="two-column">

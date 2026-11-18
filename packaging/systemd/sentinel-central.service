@@ -1,6 +1,7 @@
 [Unit]
 Description=Xe-AntiShell central management service
-After=network.target local-fs.target
+Wants=sentinel-central-updater.socket
+After=network.target local-fs.target sentinel-central-updater.socket
 ConditionPathExists=/var/lib/xe-antishell-central/state.json
 
 [Service]

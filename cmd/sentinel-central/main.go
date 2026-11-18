@@ -12,9 +12,12 @@ import (
 	"time"
 
 	"github.com/mkjang2000/Xe-AntiShell-Central/internal/central"
+	"github.com/mkjang2000/Xe-AntiShell-Central/internal/selfupdate"
 )
 
 const defaultStateDirectory = "/var/lib/xe-antishell-central"
+
+var binaryVersion = "0.1.0-dev"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
@@ -39,11 +42,18 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return capacity(args[1:], stdout, stderr)
 	case "serve":
 		return serve(args[1:], stderr)
+	case "update":
+		return updateCentral(args[1:], stdout, stderr)
+	case "update-worker":
+		if len(args) != 1 {
+			return errors.New("update-worker accepts no arguments")
+		}
+		return selfupdate.ServeWorker()
 	case "version":
 		if len(args) != 1 {
 			return errors.New("version accepts no arguments")
 		}
-		fmt.Fprintln(stdout, "0.1.0-dev")
+		fmt.Fprintln(stdout, binaryVersion)
 		return nil
 	default:
 		usage(stderr)
@@ -116,5 +126,6 @@ Commands:
   init-panel        Create web administrator credentials and a private initial password file
   capacity          Sample database, delivery and filesystem usage as JSON
   serve             Run agent/operator APIs and the optional management console
+  update            List releases, install a central update and monitor its result
   version`)
 }

@@ -16,7 +16,10 @@
 
 ```text
 Xe-AntiShell-Central/
-├── cmd/sentinel-central/          # Thin init/token/server CLI
+├── cmd/sentinel-central/          # Init, serve, update CLI and socket-activated worker entry
+├── cmd/xeas-central-release/      # Offline Central publisher signing and verification tool
+├── internal/selfupdate/           # Signed artifacts, local update protocol, backup and installation
+├── internal/githubrelease/        # Bounded GitHub HTTPS transport shared with agent updates
 ├── internal/central/              # PKI, SQLite, agent and operator HTTP APIs
 │   ├── enrollment_code.go        # Certificate-bound endpoint config and installation-code issuance
 │   ├── policy_trial*.go         # Bound local comparisons, single-agent rollout, promotion and recovery
@@ -55,12 +58,15 @@ Xe-AntiShell-Central/
 ├── packaging/
 │   ├── rpm/xe-antishell-central.spec
 │   ├── systemd/sentinel-central.service
+│   ├── systemd/sentinel-central-updater.{service,socket}
 │   └── install_test.sh            # Installer command-mock checks
 ├── scripts/
+│   ├── prepare-central-release.sh # Sign both EL release candidates and generate checksums
 │   ├── build-rpm.sh               # Isolated source selection and RPM build
 │   ├── build_rpm_test.sh          # Mocked build and archive checks
 │   ├── check-source.py            # Source privacy and document link checks
 │   └── check_source_test.py       # Source-check regressions
+├── .github/workflows/release-build.yml # Read-only EL9 and EL10 unsigned release builds
 ├── .github/workflows/ci.yml       # Go 1.22 and stable verification
 ├── devdocs/
 │   ├── plans/independent-central.md
@@ -103,7 +109,7 @@ Authenticated console → installation code with public CA → agent wizard → 
   preserving managed-v1 signed policy bytes and legacy omitted-field JSON.
   Its installation-code envelopes remain compatible. Offline recovery plaintext and
   client private keys are generated and retained only on the agent side.
-- Central owns one binary, service and dedicated account. Its RPM scriptlets
+- Central runs the server under its dedicated account. The same binary serves the separate root-only update worker through a group-restricted Unix socket. Its RPM scriptlets
   never call the agent CLI or apply the agent removal approval policy.
 - `/var/lib/xe-antishell-central` and existing unit overrides remain stable.
   systemd StateDirectory manages runtime ownership; installation never resets
