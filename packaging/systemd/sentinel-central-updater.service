@@ -11,7 +11,8 @@ Group=root
 StateDirectory=xe-antishell-central-updater
 StateDirectoryMode=0700
 UMask=0077
-NoNewPrivileges=true
+# EL RPM scriptlets need the SELinux transition to rpm_script_t.
+NoNewPrivileges=false
 PrivateTmp=true
 Restart=on-failure
 RestartSec=2s

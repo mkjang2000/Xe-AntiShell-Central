@@ -58,7 +58,7 @@ sentinel-central update list
 sudo sentinel-central update apply --tag TAG
 sudo sentinel-central update status
 # RPM만 있으면 GitHub에서 서명 파일을 확인한다.
-sudo sentinel-central update apply --rpm /path/to/xe-antishell-central-0.1.0-20.el9.x86_64.rpm
+sudo sentinel-central update apply --rpm /path/to/xe-antishell-central-0.1.0-21.el9.x86_64.rpm
 # 오프라인에서 설치
 sudo sentinel-central update apply --rpm /path/to/central.rpm --manifest /path/to/central.rpm.manifest.json
 ```

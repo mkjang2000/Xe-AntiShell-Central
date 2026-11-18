@@ -2,6 +2,8 @@
 # Verify central installation orchestration without changing host packages/state.
 set -euo pipefail
 test_source_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+grep -Fxq 'NoNewPrivileges=false' "$test_source_root/packaging/systemd/sentinel-central-updater.service"
+grep -Fxq 'NoNewPrivileges=true' "$test_source_root/packaging/systemd/sentinel-central.service"
 source "$test_source_root/install.sh"
 test_work=$(mktemp -d)
 trap 'rm -rf -- "$test_work"' EXIT
