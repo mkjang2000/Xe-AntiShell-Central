@@ -36,6 +36,7 @@
       card.append(C.facts([["이벤트 시각",C.time(payload.event_time)],["서비스",process.origin_service],["PID",process.pid],["수집 소스",payload.source],...observation.fields]));
     }
     else card.append(C.el("p","record-summary",payload.kind||payload.action||payload.result||"에이전트 감사 기록"));
+    if(finding && record.finding_location)card.append(C.findingReviews(record));
     card.append(C.raw(record,"중앙 보존 원문 보기"));return card;
   };
   const errorCard=item=>{

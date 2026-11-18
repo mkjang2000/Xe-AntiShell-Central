@@ -9,12 +9,13 @@ class Node {
   replaceChildren(...nodes){this.children=[...nodes];}
   addEventListener(name,callback){this.handlers[name]=callback;}
   setAttribute(name,value){this.attributes[name]=value;}
+  removeAttribute(name){delete this.attributes[name];}
   set innerHTML(_){throw new Error("Unsafe HTML insertion");}
 }
 function harness(request=async()=>({items:[],next:""})) {
   const nodes={},document={createElement:tag=>new Node(tag),getElementById:id=>nodes[id]??(nodes[id]=new Node()),createDocumentFragment:()=>new Node("fragment")};
-  const context=vm.createContext({URLSearchParams,Date,Node,document,location:{hash:""},structuredClone,AbortController,setTimeout,clearTimeout});
-  for(const name of ["model.js","history.js"])vm.runInContext(fs.readFileSync(new URL(name,import.meta.url),"utf8"),context);
+  const context=vm.createContext({URLSearchParams,Date,Node,document,location:{hash:""},structuredClone,AbortController,crypto:globalThis.crypto,TextEncoder,setTimeout,clearTimeout});
+  for(const name of ["model.js","finding-reviews.js","history.js"])vm.runInContext(fs.readFileSync(new URL(name,import.meta.url),"utf8"),context);
   const C=context.XEC;C.now=()=>Date.parse("2026-11-17T12:00:00Z");C.request=request;C.error=error=>{C.lastError=String(error);};C.id("historyKind").value="detections";C.id("historyPeriod").value="7d";C.initHistory();
   const text=node=>typeof node==="string"?node:(node.textContent||"")+node.children.map(text).join("");
   return {C,nodes,context,text};
@@ -89,4 +90,29 @@ test("inline and temporary script findings show request evidence and detection-o
   const visible=C.id("historyRows").children.map(card=>card.children.filter(node=>node.tagName!=="details").map(text).join(" ")).join(" ");
   assert.match(visible,/직접 코드 실행 요청/);assert.match(visible,/임시 경로의 스크립트 실행 요청/);assert.match(visible,/실행 성공 여부는 확인하지 않습니다/);
   assert.match(visible,/자동 종료 대상에 포함되지 않습니다/);assert.match(visible,/악성 확률이 아닙니다/);assert.doesNotMatch(visible,/RAW_OLD_SUMMARY/);
+});
+
+test("finding review targets the selected bundle item and retries one decision after a lost response",async()=>{
+  const ref={source:"event_bundle",item:2}, posts=[],calls=[];
+  let role="operator";
+  const {C,text}=harness(async(path,options={})=>{
+    calls.push(path);
+    if(options.method==="POST"){
+      posts.push(options.body);
+      if(posts.length===1)throw new Error("connection interrupted");
+      return {version:1};
+    }
+    const q=new URL(path,"http://localhost").searchParams;
+    assert.equal(q.get("item"),"2");assert.equal(q.get("record_id"),"bundle");
+    return {finding:{finding_id:"second",rule_id:"file",policy_revision:11},latest_version:posts.length>=2?1:0,items:[]};
+  });
+  const create=()=>{C.session={role};return C.findingReviews({agent_id:"agent",id:"bundle",finding_location:ref});};
+  const find=(node,tag)=>node.tagName===tag?node:node.children?.map(child=>find(child,tag)).find(Boolean);
+  const box=create();assert.equal(calls.length,0);box.open=true;await box.handlers.toggle();
+  const form=find(box,"form");find(form,"select").value="normal";find(form,"textarea").value="관리자 승인";
+  await form.handlers.submit({preventDefault(){}});assert.match(text(box),/connection interrupted/);
+  await form.handlers.submit({preventDefault(){}});assert.equal(posts[0].request_id,posts[1].request_id);
+  assert.deepEqual(JSON.parse(JSON.stringify(posts[1].target)),{agent_id:"agent",record_id:"bundle",...ref});
+  assert.equal(posts[1].expected_version,0);assert.match(text(box),/기록했습니다/);
+  role="viewer";const view=create();view.open=true;await view.handlers.toggle();assert.equal(find(view,"form"),undefined);
 });

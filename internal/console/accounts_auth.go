@@ -51,7 +51,7 @@ func allowsAPI(role Role, method, endpoint string) bool {
 			return true
 		}
 		switch endpoint {
-		case "/api/state", "/api/history", "/api/audit", "/api/errors":
+		case "/api/state", "/api/history", "/api/finding-reviews", "/api/audit", "/api/errors":
 			return true
 		}
 		parts = strings.Split(endpoint, "/")
@@ -61,6 +61,9 @@ func allowsAPI(role Role, method, endpoint string) bool {
 		return false
 	}
 	if method == http.MethodPost {
+		if endpoint == "/api/finding-reviews" {
+			return true
+		}
 		if endpoint == "/api/updates/preview" || endpoint == "/api/updates/rollouts" {
 			return true
 		}

@@ -95,6 +95,9 @@ func (s *Store) readHistoryPage(ctx context.Context, query string, args []any, l
 			return nil, false, err
 		}
 		row.record.Payload = payload
+		if project && row.record.Kind == "finding" {
+			row.record.Location = &findingLocation{Source: row.source, Item: int(row.item) + 1}
+		}
 		if !project {
 			row.record.Kind = row.source
 		}

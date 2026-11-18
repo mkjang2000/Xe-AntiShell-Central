@@ -23,6 +23,8 @@ Xe-AntiShell-Central/
 │   ├── delivery_receipts.go      # Compact per-stream replay checks and schema 4 cursor migration
 │   ├── capacity.go               # On-demand read-only storage and expiry statistics
 │   ├── history_retention.go      # Ingest projection, immutable digests and bounded ordinary-history expiry
+│   ├── finding_reviews.go       # Append-only per-finding operator decisions and retained evidence
+│   ├── finding_reviews_http.go  # Session-bound decision writes, pagination and evidence reads
 │   ├── history_read.go           # Separate finding/event/error/audit projections
 │   ├── history_query.go          # Literal JSON filters, bounded metadata branches and compatible cursors
 │   ├── history_reader.go         # Isolated read-only WAL pool, deadlines and legacy admin reads

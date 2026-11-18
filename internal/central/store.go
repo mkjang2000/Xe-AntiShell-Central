@@ -121,7 +121,7 @@ func (s *Store) initializeSchema(ctx context.Context, version int) error {
 			}
 		}
 	}
-	if _, err = tx.ExecContext(ctx, consoleSchema); err != nil {
+	if _, err = tx.ExecContext(ctx, consoleSchema+reviewSchema); err != nil {
 		return err
 	}
 	if err = initializeErrorHistory(ctx, tx); err != nil {

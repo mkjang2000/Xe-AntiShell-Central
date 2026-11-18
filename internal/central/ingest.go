@@ -176,11 +176,12 @@ func (s *Store) Heartbeat(ctx context.Context, agentID string, heartbeat managed
 }
 
 type HistoryRecord struct {
-	AgentID    string          `json:"agent_id"`
-	Kind       string          `json:"kind"`
-	ID         string          `json:"id"`
-	ReceivedAt time.Time       `json:"received_at"`
-	Payload    json.RawMessage `json:"payload"`
+	Location   *findingLocation `json:"finding_location,omitempty"`
+	AgentID    string           `json:"agent_id"`
+	Kind       string           `json:"kind"`
+	ID         string           `json:"id"`
+	ReceivedAt time.Time        `json:"received_at"`
+	Payload    json.RawMessage  `json:"payload"`
 }
 type AuditEntry struct {
 	ID        int64           `json:"id"`
