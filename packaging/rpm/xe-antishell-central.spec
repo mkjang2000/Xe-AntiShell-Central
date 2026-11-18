@@ -1,6 +1,6 @@
 Name:           xe-antishell-central
 Version:        0.1.0
-Release:        17%{?dist}
+Release:        18%{?dist}
 Summary:        Independent Xe-AntiShell central management service
 License:        MIT AND Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND BSD-1-Clause AND SunPro
 URL:            https://github.com/mkjang2000/Xe-AntiShell-Central
@@ -52,6 +52,9 @@ getent passwd xe-antishell-central >/dev/null || useradd -r -g xe-antishell-cent
 %systemd_postun_with_restart sentinel-central.service
 
 %changelog
+* Wed Nov 18 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-18
+- Edit and deploy signed file and TCP service scopes to compatible agents
+
 * Wed Nov 18 2026 mkjang2000 and Xe-AntiShell contributors - 0.1.0-17
 - Store compact receipts for new deliveries while preserving legacy replay validation
 - Reuse free pages ahead of bounded incremental vacuum

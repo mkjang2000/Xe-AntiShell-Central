@@ -2,7 +2,7 @@
 
 (function (C) {
   const P = {initialized: false, dirty: false, preview: null, selectionRevision: 0};
-  const fields = ["detectionEnabled","extendedRules","privilegeRules","rootExecAlerts","webExecutables","webServices","shells","allowedPairs","responseMode","responseAction","riskThreshold","minConfidence","requiredCapabilities","monitoringEnabled","sampleInterval","processLimit","uninstallMode","validityHours","integrityEnabled","integrityTPM","integrityMode","integrityPaths"];
+  const fields = ["detectionEnabled","extendedRules","privilegeRules","rootExecAlerts","webExecutables","webServices","centralServiceScopes","serviceScopes","shells","allowedPairs","responseMode","responseAction","riskThreshold","minConfidence","requiredCapabilities","monitoringEnabled","sampleInterval","processLimit","uninstallMode","validityHours","integrityEnabled","integrityTPM","integrityMode","integrityPaths"];
   const setValue = (id, value) => { const field = C.id(id); if (field.type === "checkbox") field.checked = Boolean(value); else field.value = value ?? ""; };
   const listValue = value => C.array(value).join("\n");
   const setDirty = dirty => { P.dirty = dirty; C.text("templateDirty", dirty ? "저장하지 않은 변경 사항" : "저장 상태와 일치"); };
@@ -79,6 +79,7 @@
   };
   const responseHelp = () => {
     const mode = C.id("responseMode").value;
+    C.id("serviceScopes").disabled = !C.id("centralServiceScopes").checked;
     C.id("rootExecAlerts").disabled = !C.id("privilegeRules").checked;
     C.text("responseHelp", mode === "enforce" ? "자동 종료는 서비스에 영향을 줄 수 있습니다. 위험 점수·신뢰도·필수 기능과 에이전트 로컬 종료 허용을 모두 만족해야 실행됩니다." : mode === "would_block" ? "실제 프로세스를 종료하지 않고 대응 조건 충족 여부를 기록합니다. 종료 동작·기능 조건·임계값을 명시하세요." : "탐지 결과를 기록하며 프로세스를 종료하지 않습니다.");
     capabilityHelp();
@@ -91,6 +92,8 @@
   const fillSettings = settings => {
     const d = C.object(settings.detection), r = C.object(settings.response), m = C.object(settings.monitoring), i = C.object(settings.integrity);
     const values = {detectionEnabled:d.enabled,extendedRules:d.extended_process_rules,privilegeRules:d.privilege_rules,rootExecAlerts:d.root_exec_alerts||"suspicious",webExecutables:listValue(d.web_executables),webServices:listValue(d.web_services),shells:listValue(d.shells),allowedPairs:listValue(d.allowed_pairs),responseMode:r.mode,responseAction:r.action,riskThreshold:r.risk_threshold,minConfidence:r.min_confidence,requiredCapabilities:listValue(r.required_capabilities),monitoringEnabled:m.enabled,sampleInterval:m.sample_interval_seconds,processLimit:m.process_limit,uninstallMode:settings.uninstall_mode,validityHours:settings.validity_hours,integrityEnabled:i.enabled,integrityTPM:i.require_tpm,integrityMode:i.mode || "observe",integrityPaths:listValue(i.paths)};
+    values.centralServiceScopes = Object.hasOwn(d, "service_observations");
+    values.serviceScopes = JSON.stringify(d.service_observations || [], null, 2);
     for (const id of fields) setValue(id, values[id]); fillCapabilityEditor(); responseHelp();
   };
   const fillTemplate = template => {
@@ -147,6 +150,7 @@
     const full = C.el("details","technical"), monitoring = C.object(settings.monitoring), integrity = C.object(settings.integrity);
     full.append(C.el("summary","","탐지 범위·대응 조건·모니터링 전체 확인"),C.facts([
       ["탐지 / 확장 규칙",`${detection.enabled?"사용":"사용 안 함"} / ${detection.extended_process_rules?"사용":"사용 안 함"}`],
+      ["서비스별 파일·TCP 범위", C.serviceScopeSummary(detection)],
       ["전역 root·권한 변경 탐지",detection.privilege_rules?`사용 · ${detection.root_exec_alerts==="all"?"모든 root 실행 경보":"의심 문맥만 경보"} · 자동 종료 대상 아님`:"사용 안 함"],
       ["탐지 셸",C.array(detection.shells).join(" · ")||"없음"],["탐지 예외",C.array(detection.allowed_pairs).join(" · ")||"없음"],
       ["대응 동작",response.action==="terminate"?"프로세스 종료":"동작 없음"],["필수 기능 조건",capabilitySummary(response.required_capabilities)],

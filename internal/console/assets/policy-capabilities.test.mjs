@@ -32,7 +32,7 @@ function harness(keys = [], previewKeys = keys) {
     if (!document.nodes[id]) { const node = new Element("div", document); node.id = id; }
     return document.nodes[id];
   };
-  for (const id of ["detectionEnabled", "extendedRules", "privilegeRules", "monitoringEnabled", "integrityEnabled", "integrityTPM", "deployConfirm"]) document.getElementById(id).type = "checkbox";
+  for (const id of ["detectionEnabled", "extendedRules", "privilegeRules", "centralServiceScopes", "monitoringEnabled", "integrityEnabled", "integrityTPM", "deployConfirm"]) document.getElementById(id).type = "checkbox";
   const context = vm.createContext({document, Node: Element, structuredClone, AbortController, setTimeout, clearTimeout, location: {hash: ""}});
   vm.runInContext(source("model.js"), context); const C = context.XEC;
   const settings = {
@@ -153,4 +153,26 @@ test("privilege opt-in and root alert mode roundtrip while disabled fields disap
  assert.equal(h.C.id("rootExecAlerts").disabled,true);
  await h.submit();assert.deepEqual(h.errors,[]);
  assert.equal(Object.hasOwn(h.requests[1].body.settings.detection,"privilege_rules"),false);assert.equal(Object.hasOwn(h.requests[1].body.settings.detection,"root_exec_alerts"),false);
+});
+
+test("service scope editor preserves inheritance, an empty override, and an explicit policy", async () => {
+  const h = harness();
+  const scopes = [{service:"web.service", protected_dirs:["/srv/web"]}];
+  h.template.settings.detection.service_observations = scopes;
+  await h.open();
+  assert.equal(h.C.id("centralServiceScopes").checked, true);
+  assert.deepEqual(JSON.parse(h.C.id("serviceScopes").value), scopes);
+  await h.submit();
+  assert.deepEqual(h.requests.at(-1).body.settings.detection.service_observations, scopes);
+  h.C.id("serviceScopes").value = "[]";
+  await h.submit();
+  assert.deepEqual(h.requests.at(-1).body.settings.detection.service_observations, []);
+  h.C.id("serviceScopes").value = "null";
+  await h.submit();
+  assert.match(h.errors.at(-1), /목록/);
+  h.C.id("centralServiceScopes").checked = false;
+  h.C.id("templateForm").fire("input");
+  assert.equal(h.C.id("serviceScopes").disabled, true);
+  await h.submit();
+  assert.equal(Object.hasOwn(h.requests.at(-1).body.settings.detection, "service_observations"), false);
 });

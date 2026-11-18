@@ -111,6 +111,8 @@ Authenticated console → installation code with public CA → agent wizard → 
 - Explicit HTTPS public origins support TLS-terminating proxies only when the
   actual peer matches configured CIDRs and the request Host matches that origin.
   Forwarded headers remain untrusted; direct localhost access remains supported.
+- `internal/central/detection_policy_support.go` checks current-enrollment
+  heartbeat support for signed privilege and file/TCP service policy extensions.
 - Versioned templates retain desired integrity settings centrally; wire v1 agents
   receive supported settings only. Pending settings and agent application status
   are displayed separately. Group edits have no automatic policy effects.

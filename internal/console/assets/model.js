@@ -83,7 +83,8 @@
     "collector.audit": "감사 기록 수집기", "host.platform": "운영체제 정보", "kernel.ebpf": "eBPF 실행 환경",
     "kernel.btf": "커널 형식 정보", "kernel.cgroup": "서비스 구분 정보", "integrity.ima": "운영체제 파일 측정 정보",
     "integrity.tpm": "TPM 장치 진단", "observation.file": "파일 쓰기 관측", "observation.network": "TCP 연결 요청 관측",
-    "observation.credential_change": "권한 변경 관측", "detection.privilege_rules": "전역 root·권한 변경 탐지 엔진"
+    "observation.credential_change": "권한 변경 관측", "detection.privilege_rules": "전역 root·권한 변경 탐지 엔진",
+    "detection.service_observations": "서비스별 파일·TCP 서명 정책"
   };
   C.capabilityFresh = (name, value, agent) => {
     if (C.connection(agent).key !== "online") return false;
@@ -103,6 +104,11 @@
     if (name.startsWith("integrity.")) return {...result, label: "검증 미제공", tone: "pending", note: "장치·측정 정보의 진단 항목입니다. 에이전트 무결성 검증은 현재 제공하지 않습니다."};
     if (item.runtime_state === "error") return {...result, label: "확인 오류", tone: "danger", note: "기능 실행에서 오류가 보고되었습니다. 서버 설정과 수집기 로그를 확인하세요."};
     if (!["supported","limited","unsupported","error"].includes(item.state)) return result;
+    if (name === "detection.service_observations" && item.implementation === "implemented") {
+      const supported = C.object(item.details).contract === "1" && ["available", "active"].includes(item.runtime_state);
+      return {...result, label: supported ? "정책 지원 확인" : "정책 지원 미확인", tone: supported ? "good" : "warning",
+        note: "실제 수신 시각은 파일 쓰기 관측과 TCP 연결 요청 관측에서 확인하세요."};
+    }
     if (name === "detection.privilege_rules" && item.implementation === "implemented") {
       if (C.object(item.details).contract !== "1" || !["available","active"].includes(item.runtime_state)) return {...result,label:"엔진 지원 미확인",tone:"warning",note:"현재 보고에서 지원 계약과 엔진 가용성을 확인하지 못했습니다. 에이전트 버전과 실제 상태를 확인하세요."};
       return {...result,label:item.runtime_state==="active"?"탐지 사용 중":"엔진 지원 보고",tone:item.runtime_state==="active"?"good":"neutral",note:"전역 root 실행과 권한 변경 규칙을 지원합니다. 엔진 지원은 센서의 실제 이벤트 수신이나 침해 발생 증거가 아닙니다. 이 규칙은 자동 종료 대상에 포함되지 않습니다."};
@@ -191,8 +197,24 @@
     if (!/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/.test(challenge)) throw new Error("제거 챌린지는 서버에서 생성한 43자 요청값입니다. 'sentinel managed challenge'의 challenge 값 또는 출력 JSON을 입력하세요.");
     return challenge;
   };
+  const serviceScopeFields = values => {
+    if (!values.centralServiceScopes) return {};
+    let scopes;
+    try {
+      scopes = JSON.parse(values.serviceScopes);
+    } catch (_) {
+      throw new Error("서비스별 범위를 JSON 배열로 입력하세요. 모두 끄려면 []를 입력하세요.");
+    }
+    if (!Array.isArray(scopes)) throw new Error("서비스별 범위에는 목록이 필요합니다.");
+    return {service_observations: scopes};
+  };
+  C.serviceScopeSummary = detection => {
+    if (!Object.hasOwn(detection, "service_observations")) return "호스트 YAML 사용";
+    const scopes = detection.service_observations;
+    return scopes.length ? "중앙 정책 · " + scopes.map(scope => scope.service).join(" · ") : "중앙 정책 · 모든 서비스 범위 끔";
+  };
   C.settingsFromValues = values => ({
-    detection: {enabled: Boolean(values.detectionEnabled), extended_process_rules: Boolean(values.extendedRules), ...(values.privilegeRules ? {privilege_rules:true,root_exec_alerts:values.rootExecAlerts||"suspicious"} : {}), web_executables: C.lines(values.webExecutables), web_services: C.lines(values.webServices), shells: C.lines(values.shells), allowed_pairs: C.lines(values.allowedPairs)},
+    detection: {...serviceScopeFields(values), enabled: Boolean(values.detectionEnabled), extended_process_rules: Boolean(values.extendedRules), ...(values.privilegeRules ? {privilege_rules:true,root_exec_alerts:values.rootExecAlerts||"suspicious"} : {}), web_executables: C.lines(values.webExecutables), web_services: C.lines(values.webServices), shells: C.lines(values.shells), allowed_pairs: C.lines(values.allowedPairs)},
     response: {mode: values.responseMode, action: values.responseAction, risk_threshold: Number(values.riskThreshold), min_confidence: Number(values.minConfidence), required_capabilities: C.lines(values.requiredCapabilities)},
     uninstall_mode: values.uninstallMode,
     monitoring: {enabled: Boolean(values.monitoringEnabled), sample_interval_seconds: Number(values.sampleInterval), process_limit: Number(values.processLimit)},
@@ -206,6 +228,7 @@
   };
   C.validateSettings = settings => {
     const d = settings.detection, r = settings.response, m = settings.monitoring;
+    if (Object.hasOwn(d, "service_observations") && (!Array.isArray(d.service_observations) || d.service_observations.length > 64 || d.service_observations.some(scope => !scope || typeof scope.service !== "string" || !scope.service))) throw new Error("서비스 이름이 있는 범위를 최대 64개까지 입력하세요.");
     if (d.privilege_rules !== undefined && typeof d.privilege_rules !== "boolean" || d.root_exec_alerts !== undefined && typeof d.root_exec_alerts !== "string" || d.root_exec_alerts && (!d.privilege_rules || !["suspicious","all"].includes(d.root_exec_alerts))) throw new Error("전역 root 실행 경보 범위를 확인하세요.");
     if (d.enabled && !d.privilege_rules && (!d.shells.length || !d.web_executables.length && !d.web_services.length)) throw new Error("탐지를 사용하려면 웹 실행 파일 또는 서비스, 탐지할 셸을 입력하세요.");
     if (r.mode !== "observe" && (!d.enabled || r.action !== "terminate" || !r.required_capabilities.length || r.risk_threshold <= 0 || r.min_confidence <= 0)) throw new Error("모의 대응·자동 종료는 탐지 활성화, 종료 동작, 필수 기능 조건, 0보다 큰 위험 점수·신뢰도가 필요합니다.");
