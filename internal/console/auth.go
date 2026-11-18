@@ -52,8 +52,8 @@ func GenerateCredentials(username, password string, parameters Argon2Parameters)
 	if err := validateUsername(username); err != nil {
 		return Credentials{}, err
 	}
-	if len(password) < 16 || len(password) > 1024 {
-		return Credentials{}, errors.New("password must be between 16 and 1024 bytes")
+	if err := ValidateNewPassword(password); err != nil {
+		return Credentials{}, err
 	}
 	if err := validateArgon2Parameters(parameters); err != nil {
 		return Credentials{}, err
@@ -82,7 +82,8 @@ func GeneratePassword() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("generate initial password: %w", err)
 	}
-	return base64.RawURLEncoding.EncodeToString(value), nil
+	// Keep all 192 random bits and guarantee the required character classes.
+	return base64.RawURLEncoding.EncodeToString(value) + "a1!", nil
 }
 
 func LoadCredentials(path string) (Credentials, error) {
@@ -146,8 +147,11 @@ func WriteInitialPassword(path, password string) error {
 	if err := validateOutputPath(path); err != nil {
 		return err
 	}
-	if len(password) < 16 || len(password) > 1024 || strings.ContainsAny(password, "\r\n") {
-		return errors.New("initial password must be 16 to 1024 bytes without newlines")
+	if strings.ContainsAny(password, "\r\n") {
+		return errors.New("initial password must not contain newlines")
+	}
+	if err := ValidateNewPassword(password); err != nil {
+		return err
 	}
 	return writeExclusive(path, []byte(password+"\n"))
 }

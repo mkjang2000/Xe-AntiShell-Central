@@ -22,7 +22,7 @@ func TestAccountDatabaseImportsBootstrapOnlyOnce(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("private database: %v %v", info, err)
 	}
-	credentials, err := GenerateCredentials("replacement", "account-password-fixture", seed.Parameters)
+	credentials, err := GenerateCredentials("replacement", "account-password-fixture1!", seed.Parameters)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestAccountDatabaseImportsBootstrapOnlyOnce(t *testing.T) {
 		t.Fatal("deleted bootstrap account was recreated")
 	}
 	replacement, err := store.get(ctx, "replacement")
-	if err != nil || replacement.Role != RoleAdmin || !replacement.credentials.Verify("replacement", "account-password-fixture") {
+	if err != nil || replacement.Role != RoleAdmin || !replacement.credentials.Verify("replacement", "account-password-fixture1!") {
 		t.Fatal("durable account did not survive reopening")
 	}
 	link := filepath.Join(t.TempDir(), "link.db")

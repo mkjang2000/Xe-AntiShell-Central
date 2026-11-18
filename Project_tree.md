@@ -30,6 +30,7 @@ Xe-AntiShell-Central/
 │   ├── privilege_evidence.go      # Paired credential proof validation before ingest
 │   └── updates_*.go              # Publisher-verified RPM/GitHub catalog, signed jobs/claims/reports
 ├── internal/console/              # Authentication, enforced roles, sessions and CSRF
+│   ├── password_policy.go        # New password composition, Unicode length and legacy-login compatibility
 │   ├── accounts_store.go         # Persistent accounts, final-admin guard and account audit
 │   ├── accounts_auth.go          # Per-request identity and role authorization
 │   ├── accounts_http.go          # Account/password administration APIs
@@ -57,6 +58,7 @@ Xe-AntiShell-Central/
 │   ├── plans/privilege-detection-console.md
 │   ├── plans/central-privilege-rollout.md
 │   ├── plans/history-query-performance.md
+│   ├── plans/password-policy.md
 │   └── analysis/managed-v1-operations.md
 ├── third_party/licenses/          # Preserved upstream license texts
 ├── install.sh                    # Explicit source/local-RPM installation

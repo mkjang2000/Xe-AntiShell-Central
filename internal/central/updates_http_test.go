@@ -16,7 +16,7 @@ import (
 
 func updateAuthenticatedConsole(t *testing.T, f *fixture) func(*http.Request) *httptest.ResponseRecorder {
 	t.Helper()
-	credentials, err := console.GenerateCredentials("admin", "synthetic-update-password", console.Argon2Parameters{Time: 1, Memory: 8 * 1024, Threads: 1, KeyLen: 32})
+	credentials, err := console.GenerateCredentials("admin", "synthetic-update-password1!", console.Argon2Parameters{Time: 1, Memory: 8 * 1024, Threads: 1, KeyLen: 32})
 	if err != nil {
 		t.Fatal(err)
 	}

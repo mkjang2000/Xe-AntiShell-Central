@@ -31,7 +31,7 @@ func accountRequest(t *testing.T, s *server, cookie *http.Cookie, method, endpoi
 
 func accountFixture(t *testing.T, s *server, username string, role Role) (accountRecord, *http.Cookie) {
 	t.Helper()
-	credentials, err := GenerateCredentials(username, "account-password-fixture", s.credentials.Parameters)
+	credentials, err := GenerateCredentials(username, "account-password-fixture1!", s.credentials.Parameters)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestConsoleRolesEnforceEveryBusinessAPI(t *testing.T) {
 				t.Fatalf("restricted read %s: %d", endpoint, w.Code)
 			}
 		}
-		if w := accountRequest(t, s, cookie, "POST", "/api/accounts", map[string]string{"username": "intruder", "password": "account-password-fixture", "role": "admin"}, true); w.Code != 403 {
+		if w := accountRequest(t, s, cookie, "POST", "/api/accounts", map[string]string{"username": "intruder", "password": "account-password-fixture1!", "role": "admin"}, true); w.Code != 403 {
 			t.Fatalf("account escalation: %d", w.Code)
 		}
 	}
@@ -103,10 +103,10 @@ func TestAccountMutationsRequireCSRFAndProtectLastAdmin(t *testing.T) {
 		method, endpoint string
 		body             any
 	}{
-		{"POST", "/api/accounts", map[string]string{"username": "created", "password": "account-password-fixture", "role": "viewer"}},
+		{"POST", "/api/accounts", map[string]string{"username": "created", "password": "account-password-fixture1!", "role": "viewer"}},
 		{"POST", "/api/accounts/admin", map[string]any{"role": "viewer", "version": 1}},
 		{"DELETE", "/api/accounts/admin?version=1", nil},
-		{"POST", "/api/account/password", map[string]string{"current_password": "correct-horse-battery-staple", "password": "new-account-password-fixture"}},
+		{"POST", "/api/account/password", map[string]string{"current_password": "correct-horse-battery-staple1!", "password": "new-account-password-fixture1!"}},
 	} {
 		if w := accountRequest(t, s, admin, route.method, route.endpoint, route.body, false); w.Code != 403 {
 			t.Fatalf("CSRF bypass %s: %d", route.endpoint, w.Code)
@@ -140,7 +140,7 @@ func TestAccountRolePasswordAndDeletionInvalidateAllSessions(t *testing.T) {
 			method, endpoint, body := "POST", "/api/accounts/member", any(map[string]any{"role": "viewer", "version": record.Version})
 			if operation == "password" {
 				endpoint += "/password"
-				body = map[string]any{"password": "new-account-password-fixture", "version": record.Version}
+				body = map[string]any{"password": "new-account-password-fixture1!", "version": record.Version}
 			}
 			if operation == "delete" {
 				method = "DELETE"
@@ -167,13 +167,13 @@ func TestOwnPasswordRequiresCurrentValueAndRateLimitsAttempts(t *testing.T) {
 	s, _ := testServer(t)
 	defer s.Close()
 	_, viewer := accountFixture(t, s, "viewer", RoleViewer)
-	request := map[string]string{"current_password": "wrong-password-fixture", "password": "new-account-password-fixture"}
+	request := map[string]string{"current_password": "wrong-password-fixture", "password": "new-account-password-fixture1!"}
 	for attempt := 0; attempt < loginIPLimit; attempt++ {
 		if w := accountRequest(t, s, viewer, "POST", "/api/account/password", request, true); w.Code != 403 {
 			t.Fatalf("incorrect current password: %d", w.Code)
 		}
 	}
-	request["current_password"] = "account-password-fixture"
+	request["current_password"] = "account-password-fixture1!"
 	if w := accountRequest(t, s, viewer, "POST", "/api/account/password", request, true); w.Code != 429 || w.Header().Get("Retry-After") != "300" {
 		t.Fatal("password guessing was not bounded")
 	}
@@ -185,7 +185,7 @@ func TestOwnPasswordRequiresCurrentValueAndRateLimitsAttempts(t *testing.T) {
 	if w := accountRequest(t, s, viewer, "GET", "/api/session", nil, false); w.Code != 401 {
 		t.Fatal("own password change kept the old session")
 	}
-	body := url.Values{"username": {"viewer"}, "password": {"new-account-password-fixture"}}.Encode()
+	body := url.Values{"username": {"viewer"}, "password": {"new-account-password-fixture1!"}}.Encode()
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, formRequest(body))
 	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" || len(w.Result().Cookies()) != 1 {
@@ -197,7 +197,7 @@ func TestAccountCreationAndAuditNamedAccountRemainManageable(t *testing.T) {
 	s, _ := testServer(t)
 	defer s.Close()
 	admin := testSession(t, s)
-	request := map[string]string{"username": "audit", "password": "account-password-fixture", "role": "viewer"}
+	request := map[string]string{"username": "audit", "password": "account-password-fixture1!", "role": "viewer"}
 	w := accountRequest(t, s, admin, "POST", "/api/accounts", request, true)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create audit account: %d %s", w.Code, w.Body)
@@ -220,7 +220,7 @@ func TestAccountCreationAndAuditNamedAccountRemainManageable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"password_hash", "session_key", record.credentials.Hash, record.credentials.SessionKey, "account-password-fixture"} {
+	for _, secret := range []string{"password_hash", "session_key", record.credentials.Hash, record.credentials.SessionKey, "account-password-fixture1!"} {
 		if strings.Contains(w.Body.String(), secret) {
 			t.Fatal("account list exposed credential material")
 		}
@@ -235,7 +235,7 @@ func TestAccountCreationAndAuditNamedAccountRemainManageable(t *testing.T) {
 }
 
 func TestLegacyAuditUsernameRetainsAdministratorProtection(t *testing.T) {
-	credentials, err := GenerateCredentials("audit", "account-password-fixture", testCredentials(t).Parameters)
+	credentials, err := GenerateCredentials("audit", "account-password-fixture1!", testCredentials(t).Parameters)
 	if err != nil {
 		t.Fatal(err)
 	}

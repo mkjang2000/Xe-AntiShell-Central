@@ -59,7 +59,11 @@ func (s *server) serveAccounts(w http.ResponseWriter, r *http.Request, actor Acc
 			}
 			credentials, err := GenerateCredentials(request.Username, request.Password, s.credentials.Parameters)
 			if err != nil {
-				s.accountError(w, errAccountInvalid)
+				if errors.Is(err, ErrPasswordPolicy) {
+					s.accountError(w, err)
+				} else {
+					s.accountError(w, errAccountInvalid)
+				}
 				return
 			}
 			account, err := s.accounts.mutate(r.Context(), actor.Username, "created", accountRecord{Account: Account{Username: request.Username, Role: request.Role}, credentials: credentials}, 0, s.now())
@@ -192,7 +196,11 @@ func (s *server) changeAccountPassword(w http.ResponseWriter, r *http.Request, a
 	}
 	credentials, err := GenerateCredentials(username, request.Password, record.credentials.Parameters)
 	if err != nil {
-		s.accountError(w, errAccountInvalid)
+		if errors.Is(err, ErrPasswordPolicy) {
+			s.accountError(w, err)
+		} else {
+			s.accountError(w, errAccountInvalid)
+		}
 		return
 	}
 	record.credentials = credentials
@@ -245,8 +253,10 @@ func (s *server) accountError(w http.ResponseWriter, err error) {
 		status, message = http.StatusConflict, "마지막 관리자는 삭제하거나 권한을 낮출 수 없습니다. 다른 관리자를 먼저 추가하세요."
 	case errors.Is(err, ErrInvalidCredentials):
 		status, message = http.StatusForbidden, "현재 비밀번호를 확인하세요."
+	case errors.Is(err, ErrPasswordPolicy):
+		status, message = http.StatusBadRequest, PasswordPolicyMessage
 	case errors.Is(err, errAccountInvalid):
-		status, message = http.StatusBadRequest, "사용자 이름, 권한과 비밀번호(16~1,024바이트)를 확인하세요."
+		status, message = http.StatusBadRequest, "사용자 이름과 권한을 확인하세요."
 	default:
 		s.logger.Error("console account operation failed")
 	}

@@ -18,9 +18,20 @@
     const wrap=el("div","field"),caption=el("label","",label),input=Object.assign(el("input"),{id,name:id,type,required:true,maxLength:type==="password"?1024:64});
     caption.htmlFor=id;if(autocomplete)input.autocomplete=autocomplete;wrap.append(caption,input);return {wrap,input};
   };
+  const passwordHelp="비밀번호는 8자 이상이며 영문 소문자·숫자·특수문자(예: !@#$%, 공백 제외)를 모두 포함해야 합니다. 8~9자는 영문 대문자도 필요합니다. 최대 1,024 UTF-8 바이트입니다.";
+  const passwordPattern="(?![\\s\\S]*[\\uD800-\\uDFFF])(?=[\\s\\S]*[a-z])(?=[\\s\\S]*[0-9])(?=[\\s\\S]*[\\x21-\\x2f\\x3a-\\x40\\x5b-\\x60\\x7b-\\x7e])(?:(?=[\\s\\S]*[A-Z])[\\s\\S]{8,9}|[\\s\\S]{10,})";
+  const newPasswordField = (label,id) => {
+    const result=field(label,"password",id,"new-password");
+    result.input.minLength=8;result.input.pattern=passwordPattern;result.input.title=passwordHelp;
+    return result;
+  };
   const validPassword = value => {
-    const length=new TextEncoder().encode(value).length;
-    if(length<16||length>1024)throw new Error("비밀번호는 UTF-8 기준 16~1,024바이트로 입력하세요.");
+    const length=Array.from(value).length,bytes=new TextEncoder().encode(value).length;
+    if(length<8||bytes>1024||/[\uD800-\uDFFF]/u.test(value)||!/[a-z]/.test(value)||!/[0-9]/.test(value)||!/[\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e]/.test(value)||(length<10&&!/[A-Z]/.test(value)))throw new Error(passwordHelp);
+    return value;
+  };
+  const currentPassword = value => {
+    if(new TextEncoder().encode(value).length>1024)throw new Error("현재 비밀번호는 최대 1,024 UTF-8 바이트로 입력하세요.");
     return value;
   };
   const passwordPair = (first,second) => {
@@ -128,8 +139,8 @@
     },async result=>{populateDetail(result.account);detail.heading.focus();await saved(detail,"권한을 변경하고 기존 세션을 종료했습니다.");});});
     const content=[facts,note,operation("권한 변경","accountRoleOperation",role.form)];
     if(account.username!==C.session.username){
-      const reset=mutationForm(detail,"비밀번호 재설정"),next=field("새 비밀번호","password","accountResetPassword","new-password"),repeat=field("새 비밀번호 확인","password","accountResetPasswordConfirm","new-password"),confirmed=confirmation("비밀번호 변경과 기존 세션 종료를 확인했습니다.","accountResetConfirm");
-      reset.form.id="accountResetForm";reset.fieldset.append(next.wrap,repeat.wrap,confirmed.wrap,button("비밀번호 재설정","accountResetSubmit","submit"));content.push(operation("비밀번호 재설정","accountResetOperation",reset.form));
+      const reset=mutationForm(detail,"비밀번호 재설정"),next=newPasswordField("새 비밀번호","accountResetPassword"),repeat=newPasswordField("새 비밀번호 확인","accountResetPasswordConfirm"),confirmed=confirmation("비밀번호 변경과 기존 세션 종료를 확인했습니다.","accountResetConfirm");
+      reset.form.id="accountResetForm";reset.fieldset.append(next.wrap,repeat.wrap,confirmed.wrap,button("비밀번호 재설정","accountResetSubmit","submit"));reset.form.prepend(el("p","panel-note",passwordHelp));content.push(operation("비밀번호 재설정","accountResetOperation",reset.form));
       reset.form.addEventListener("submit",event=>{event.preventDefault();return run(detail,()=>{
         const value=passwordPair(next.input,repeat.input);
         if(!confirmed.input.checked)throw new Error("비밀번호 변경 확인에 체크하세요.");
@@ -188,11 +199,11 @@
     create=shell("accountCreateDialog","계정 추가");password=shell("accountPasswordDialog","내 비밀번호 변경");detail=shell("accountDetailDialog","계정 상세");
     detail.reload=button("최신 정보 다시 조회","accountDetailReload");detail.reload.hidden=true;detail.footer.prepend(detail.reload);
     detail.reload.addEventListener("click",()=>{if(detail.busy)return;detail.stale=false;return run(detail,async()=>{if(!await C.loadAccounts())throw new Error("계정 목록을 다시 조회하지 못했습니다.");const account=state.accounts.find(item=>item.username===detail.snapshot.username);if(!account)throw new Error("이 계정은 삭제되었습니다. 창을 닫고 목록을 확인하세요.");return account;},async account=>{populateDetail(account);detail.error.hidden=true;detail.status.textContent="최신 정보를 조회했습니다. 변경할 내용을 다시 입력하세요.";detail.heading.focus();});});
-    const creation=mutationForm(create,"새 계정"),username=field("사용자 이름","text","accountCreateUsername","username"),initial=field("초기 비밀번호","password","accountCreatePassword","new-password"),repeat=field("비밀번호 확인","password","accountCreatePasswordConfirm","new-password"),role=roleField("accountCreateRole","viewer");creation.form.id="accountCreateForm";username.input.pattern="[A-Za-z0-9_-]{1,64}";creation.fieldset.append(username.wrap,role.wrap,initial.wrap,repeat.wrap,button("계정 추가","accountCreateSubmit","submit"));create.content.append(el("p","panel-note","비밀번호는 UTF-8 기준 16~1,024바이트입니다."),creation.form);
+    const creation=mutationForm(create,"새 계정"),username=field("사용자 이름","text","accountCreateUsername","username"),initial=newPasswordField("초기 비밀번호","accountCreatePassword"),repeat=newPasswordField("비밀번호 확인","accountCreatePasswordConfirm"),role=roleField("accountCreateRole","viewer");creation.form.id="accountCreateForm";username.input.pattern="[A-Za-z0-9_-]{1,64}";creation.fieldset.append(username.wrap,role.wrap,initial.wrap,repeat.wrap,button("계정 추가","accountCreateSubmit","submit"));create.content.append(el("p","panel-note",passwordHelp),creation.form);
     creation.form.addEventListener("submit",event=>{event.preventDefault();return run(create,()=>C.request("/api/accounts",{method:"POST",body:{username:username.input.value.trim(),role:role.input.value,password:passwordPair(initial.input,repeat.input)}}),async()=>{close(create);await C.loadAccounts();C.notify("계정을 추가했습니다. 초기 비밀번호를 사용자에게 안전하게 전달하세요.");});});
     add.addEventListener("click",()=>{username.input.value="";role.input.value="viewer";create.username="";open(create,add,username.input);});
-    const ownForm=mutationForm(password,"비밀번호 변경"),current=field("현재 비밀번호","password","accountCurrentPassword","current-password"),next=field("새 비밀번호","password","accountNewPassword","new-password"),confirm=field("새 비밀번호 확인","password","accountConfirmPassword","new-password");ownForm.form.id="accountPasswordForm";ownForm.fieldset.append(current.wrap,next.wrap,confirm.wrap,button("비밀번호 변경","accountPasswordSubmit","submit"));password.content.append(el("p","panel-note","UTF-8 기준 16~1,024바이트입니다. 변경하면 모든 기존 세션이 종료되며 다시 로그인해야 합니다."),ownForm.form);
-    ownForm.form.addEventListener("submit",event=>{event.preventDefault();return run(password,()=>{const old=current.input.value;current.input.value="";const value=passwordPair(next.input,confirm.input);return C.request("/api/account/password",{method:"POST",body:{current_password:validPassword(old),password:value}});},async()=>{});});
+    const ownForm=mutationForm(password,"비밀번호 변경"),current=field("현재 비밀번호","password","accountCurrentPassword","current-password"),next=newPasswordField("새 비밀번호","accountNewPassword"),confirm=newPasswordField("새 비밀번호 확인","accountConfirmPassword");ownForm.form.id="accountPasswordForm";ownForm.fieldset.append(current.wrap,next.wrap,confirm.wrap,button("비밀번호 변경","accountPasswordSubmit","submit"));password.content.append(el("p","panel-note",passwordHelp+" 변경하면 모든 기존 세션이 종료되며 다시 로그인해야 합니다."),ownForm.form);
+    ownForm.form.addEventListener("submit",event=>{event.preventDefault();return run(password,()=>{const old=current.input.value;current.input.value="";const value=passwordPair(next.input,confirm.input);return C.request("/api/account/password",{method:"POST",body:{current_password:currentPassword(old),password:value}});},async()=>{});});
     own.addEventListener("click",()=>{password.username="";open(password,own,current.input);});search.input.addEventListener("input",renderTable);filter.addEventListener("change",renderTable);
     root.append(...dialogs.map(panel=>panel.dialog));
     globalThis.addEventListener("keydown",event=>{if(event.key==="Escape"&&tooltip){event.preventDefault();event.stopPropagation();hideTooltip();}},true);

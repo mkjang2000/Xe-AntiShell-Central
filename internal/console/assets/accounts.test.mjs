@@ -40,7 +40,7 @@ function harness() {
   const id=value=>document.getElementById(value),click=value=>id(value).emit("click").done,submit=value=>id(value).emit("submit").done;
   const global=(name,extra={})=>{const event={preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;},...extra};for(const handler of events.get(name)||[])handler(event);return event;};
   const openDetail=name=>root.querySelectorAll("[data-account-username]").find(node=>node.dataset.accountUsername===name).emit("click").done;
-  const passwordValues=(prefix,first="account-password-fixture",second=first)=>{id(prefix).value=first;id(`${prefix}Confirm`).value=second;};
+  const passwordValues=(prefix,first="account-password-fixture1!",second=first)=>{id(prefix).value=first;id(`${prefix}Confirm`).value=second;};
   return {C,data,calls,errors,notices,redirects,document,root,id,click,submit,global,openDetail,passwordValues,setMutation:fn=>{mutation=fn;},flushClose:()=>{while(closeEvents.length)closeEvents.shift()();},tick:()=>{const pending=[...timers.values()];timers.clear();pending.forEach(handler=>handler());}};
 }
 
@@ -70,15 +70,50 @@ test("native dialog cancellation clears secrets and restores focus after inertne
   assert.equal(h.id("accountPasswordDialog").open,true);assert.equal(h.id("accountNewPassword").value,"NEW_OPEN_FIXTURE","a queued old close event must not wipe a new opening");
 });
 
-test("creation and self password use dialogs and validate UTF-8 bytes",async()=>{
+test("creation and self password use the shared shorter composition policy",async()=>{
   const h=harness();await h.C.loadAccounts();await h.click("accountCreateOpen");assert.equal(h.document.activeElement,h.id("accountCreateUsername"));
-  h.id("accountCreateUsername").value="byte-check";h.passwordValues("accountCreatePassword","가나다라마바사아");
-  h.setMutation(async(path,options)=>{assert.equal(path,"/api/accounts");assert.equal(options.body.password,"가나다라마바사아");return {};});
+  h.id("accountCreateUsername").value="short-policy";h.passwordValues("accountCreatePassword","Abc123!x");
+  h.setMutation(async(path,options)=>{assert.equal(path,"/api/accounts");assert.equal(options.body.password,"Abc123!x");return {};});
   await h.submit("accountCreateForm");assert.equal(h.id("accountCreateDialog").open,false);assert.equal(h.id("accountCreatePassword").value,"");
-  await h.click("accountOwnPasswordOpen");h.id("accountCurrentPassword").value="account-password-fixture";h.id("accountNewPassword").value="short";h.id("accountConfirmPassword").value="short";
-  const count=h.calls.length;await h.submit("accountPasswordForm");assert.equal(h.calls.length,count);assert.match(h.id("accountPasswordDialog").textContent,/16.*1,024바이트/);assert.equal(h.errors.length,0);
-  h.id("accountCurrentPassword").value="account-password-fixture";h.id("accountNewPassword").value="가나다라마바사아";h.id("accountConfirmPassword").value="가나다라마바사아";
-  h.setMutation(async()=>({reauthenticate:true}));await h.submit("accountPasswordForm");assert.deepEqual(h.redirects,["/login"]);assert.equal(h.C.session,null);
+  await h.click("accountOwnPasswordOpen");h.id("accountCurrentPassword").value="legacy-password-fixture";h.id("accountNewPassword").value="short";h.id("accountConfirmPassword").value="short";
+  const count=h.calls.length;await h.submit("accountPasswordForm");assert.equal(h.calls.length,count);assert.match(h.id("accountPasswordDialog").textContent,/8자.*8~9자.*대문자.*1,024 UTF-8/);assert.equal(h.errors.length,0);
+  h.id("accountCurrentPassword").value="legacy-password-fixture";h.id("accountNewPassword").value="abcdef12!x";h.id("accountConfirmPassword").value="abcdef12!x";
+  h.setMutation(async(path,options)=>{assert.equal(options.body.current_password,"legacy-password-fixture");assert.equal(options.body.password,"abcdef12!x");return {reauthenticate:true};});
+  await h.submit("accountPasswordForm");assert.deepEqual(h.redirects,["/login"]);assert.equal(h.C.session,null);
+});
+
+test("new password JS and native pattern agree at character and byte boundaries",async()=>{
+  const cases=[
+    ["Ab1!xyz",false],["Abc123!x",true],["Abcd123!x",true],["abcde12!x",false],["abcdef12!x",true],
+    ["ABCDEF12!X",false],["abcdefghi!",false],["abcdef1234",false],["Abc123 x",false],["Ab1! xy ",true],
+    ["Abc123😀x",false],["가Ab1!😀😃😄",true],["가a1!b",false],["가나다라마바a1!x",true],
+    ["a1!"+"x".repeat(1021),true],["a1!"+"x".repeat(1022),false],
+    ["a1!x"+"가".repeat(340),true],["a1!xx"+"가".repeat(340),false],["Abc12!xy\ud800",false]
+  ];
+  for(let code=0x21;code<=0x7e;code++){
+    const special=(code>=0x21&&code<=0x2f)||(code>=0x3a&&code<=0x40)||(code>=0x5b&&code<=0x60)||(code>=0x7b&&code<=0x7e);
+    cases.push(["Abc123xx"+String.fromCharCode(code),special]);
+  }
+  for(const [value,valid] of cases){
+    const h=harness();await h.C.loadAccounts();await h.click("accountCreateOpen");h.id("accountCreateUsername").value="policy-case";
+    const input=h.id("accountCreatePassword");assert.equal(input.minLength,8);assert.equal(input.maxLength,1024);assert.match(input.title,/소문자.*숫자.*특수문자/);
+    const nativeFormat=new RegExp(`^(?:${input.pattern})$`,"v").test(value);
+    const bytes=new TextEncoder().encode(value).length;
+    assert.equal(nativeFormat&&bytes<=1024,valid,"native new-password format differs");
+    h.passwordValues("accountCreatePassword",value);let submitted=false;h.setMutation(async()=>{submitted=true;return {};});
+    await h.submit("accountCreateForm");assert.equal(submitted,valid,"JS new-password policy mismatch");
+    assert.equal(h.id("accountCreatePassword").value,"");assert.equal(h.id("accountCreatePasswordConfirm").value,"");
+    if(!valid)assert.match(h.id("accountCreateDialog").textContent,/8자.*대문자/);
+  }
+});
+
+test("password reset fields use the same new-password constraints and help",async()=>{
+  const h=harness();await h.C.loadAccounts();await h.openDetail("operator");
+  for(const name of ["accountResetPassword","accountResetPasswordConfirm"]){assert.equal(h.id(name).minLength,8);assert.match(h.id(name).title,/8~9자/);}
+  assert.match(h.id("accountResetForm").textContent,/영문 소문자.*숫자.*특수문자/);
+  h.passwordValues("accountResetPassword","Abc123!x");h.id("accountResetConfirm").checked=true;let submitted=false;
+  h.setMutation(async(path,options)=>{assert.equal(options.body.password,"Abc123!x");submitted=true;return {account:{...h.data.accounts[1],version:2}};});
+  await h.submit("accountResetForm");assert.equal(submitted,true);
 });
 
 test("detail operations fold separately and local validation remains editable",async()=>{

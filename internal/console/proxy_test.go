@@ -38,7 +38,7 @@ func proxyRequest(method, path, body string) *http.Request {
 
 func TestProxyLoginSessionCSRFAndLogout(t *testing.T) {
 	s, calls := proxyTestServer(t)
-	body := url.Values{"username": {"admin"}, "password": {"correct-horse-battery-staple"}}.Encode()
+	body := url.Values{"username": {"admin"}, "password": {"correct-horse-battery-staple1!"}}.Encode()
 	r := proxyRequest(http.MethodPost, "/login", body)
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -103,7 +103,7 @@ func TestProxyRejectsUntrustedAndCrossOriginLoginAndMutations(t *testing.T) {
 				if path == "/login" && tc.name == "missing CSRF" {
 					continue
 				}
-				r := proxyRequest(http.MethodPost, path, "username=admin&password=correct-horse-battery-staple")
+				r := proxyRequest(http.MethodPost, path, "username=admin&password=correct-horse-battery-staple1!")
 				r.Host, r.RemoteAddr = tc.host, tc.peer
 				r.Header.Set("Origin", tc.origin)
 				r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -138,7 +138,7 @@ func TestProxyRejectsUntrustedAndCrossOriginLoginAndMutations(t *testing.T) {
 
 func TestConfiguredProxyPreservesDirectLocalLogin(t *testing.T) {
 	s, _ := proxyTestServer(t)
-	r := formRequest("username=admin&password=correct-horse-battery-staple")
+	r := formRequest("username=admin&password=correct-horse-battery-staple1!")
 	r.RemoteAddr = "127.0.0.1:4567"
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)

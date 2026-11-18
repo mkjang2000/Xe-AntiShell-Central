@@ -73,7 +73,7 @@ func TestLoginCookieAndFixedRedirect(t *testing.T) {
 	for _, secure := range []bool{false, true} {
 		t.Run(map[bool]string{false: "HTTP", true: "TLS"}[secure], func(t *testing.T) {
 			s, _ := testServer(t)
-			body := url.Values{"username": {"admin"}, "password": {"correct-horse-battery-staple"}}.Encode()
+			body := url.Values{"username": {"admin"}, "password": {"correct-horse-battery-staple1!"}}.Encode()
 			r := formRequest(body)
 			r.URL.RawQuery = "next=https://evil.example"
 			r.Header.Set("X-Forwarded-Proto", "https")
@@ -262,7 +262,7 @@ func TestLoginRateLimitsAndArgonConcurrency(t *testing.T) {
 	}
 	s.loginSlots <- struct{}{}
 	defer func() { <-s.loginSlots }()
-	r := formRequest("username=admin&password=correct-horse-battery-staple")
+	r := formRequest("username=admin&password=correct-horse-battery-staple1!")
 	r.RemoteAddr = "192.0.2.2:1234"
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)

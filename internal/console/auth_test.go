@@ -12,7 +12,7 @@ import (
 
 func testCredentials(t *testing.T) Credentials {
 	t.Helper()
-	credentials, err := GenerateCredentials("admin", "correct-horse-battery-staple", Argon2Parameters{
+	credentials, err := GenerateCredentials("admin", "correct-horse-battery-staple1!", Argon2Parameters{
 		Time: 1, Memory: 8 * 1024, Threads: 1, KeyLen: 32,
 	})
 	if err != nil {
@@ -23,8 +23,8 @@ func testCredentials(t *testing.T) Credentials {
 
 func TestCredentialsAndSessions(t *testing.T) {
 	c := testCredentials(t)
-	if !c.Verify("admin", "correct-horse-battery-staple") ||
-		c.Verify("admin", "wrong-password-value") || c.Verify("other", "correct-horse-battery-staple") {
+	if !c.Verify("admin", "correct-horse-battery-staple1!") ||
+		c.Verify("admin", "wrong-password-value") || c.Verify("other", "correct-horse-battery-staple1!") {
 		t.Fatal("credential verification did not distinguish correct and incorrect inputs")
 	}
 	now := time.Unix(1_700_000_000, 0)
