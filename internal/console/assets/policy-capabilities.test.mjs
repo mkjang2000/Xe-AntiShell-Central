@@ -176,3 +176,19 @@ test("service scope editor preserves inheritance, an empty override, and an expl
   await h.submit();
   assert.equal(Object.hasOwn(h.requests.at(-1).body.settings.detection, "service_observations"), false);
 });
+
+test("temporary rule exceptions survive template edit and clearing restores profile defaults", async () => {
+  const h = harness();
+  const controls = [{service:"web.service",rule_id:"web-descendant-shell",mode:"suppress_until",reason:"maintenance",expires_at:"2026-12-01T01:00:00Z"}];
+  h.template.settings.detection.service_rule_controls = controls;
+  await h.open();
+  assert.deepEqual(JSON.parse(h.C.id("serviceRuleControls").value), controls);
+  await h.submit();
+  assert.deepEqual(h.requests.at(-1).body.settings.detection.service_rule_controls, controls);
+  h.C.id("serviceRuleControls").value = JSON.stringify([...controls,...controls]);
+  await h.submit();
+  assert.match(h.errors.at(-1), /중복/);
+  h.C.id("serviceRuleControls").value = "[]";
+  await h.submit();
+  assert.equal(Object.hasOwn(h.requests.at(-1).body.settings.detection, "service_rule_controls"),false);
+});

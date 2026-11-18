@@ -42,6 +42,16 @@ func allowsAPI(role Role, method, endpoint string) bool {
 	if role != RoleOperator && role != RoleViewer {
 		return false
 	}
+	partsTrial := strings.Split(endpoint, "/")
+	if len(partsTrial) >= 3 && partsTrial[1] == "api" && partsTrial[2] == "policy-trials" {
+		if method == http.MethodGet {
+			return len(partsTrial) == 3 || len(partsTrial) == 4 && partsTrial[3] != ""
+		}
+		if role != RoleOperator || method != http.MethodPost {
+			return false
+		}
+		return len(partsTrial) == 3 || len(partsTrial) == 5 && partsTrial[3] != "" && (partsTrial[4] == "report" || partsTrial[4] == "preview" || partsTrial[4] == "apply")
+	}
 	if method == http.MethodGet {
 		if endpoint == "/api/updates/releases" || endpoint == "/api/updates/agents" || endpoint == "/api/updates/rollouts" || endpoint == "/api/updates/github/releases" {
 			return true
@@ -55,7 +65,7 @@ func allowsAPI(role Role, method, endpoint string) bool {
 			return true
 		}
 		parts = strings.Split(endpoint, "/")
-		return len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[3] != "" && parts[4] == "policy"
+		return len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[3] != "" && (parts[4] == "policy" || parts[4] == "integrity")
 	}
 	if role != RoleOperator {
 		return false

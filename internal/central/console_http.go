@@ -19,6 +19,10 @@ import (
 func (s *Server) ConsoleHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/state", s.consoleState)
+	for _, pattern := range []string{"GET /api/policy-trials", "POST /api/policy-trials", "GET /api/policy-trials/{id}", "POST /api/policy-trials/{id}/{operation}"} {
+		mux.HandleFunc(pattern, s.consolePolicyTrial)
+	}
+	mux.HandleFunc("GET /api/agents/{id}/integrity", s.consoleFileIntegrity)
 	mux.HandleFunc("GET /api/agents/{id}/policy", s.consoleAgentPolicy)
 	mux.HandleFunc("GET /api/history", s.consoleHistory)
 	mux.HandleFunc("GET /api/finding-reviews", s.consoleFindingReviews)
@@ -157,20 +161,21 @@ func (s *Server) consoleState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pending := make(map[string][]string)
-	rows, err = tx.QueryContext(r.Context(), `SELECT a.agent_id,s.settings_json FROM agents a JOIN console_policy_settings s
+	rows, err = tx.QueryContext(r.Context(), `SELECT a.agent_id,s.settings_json,EXISTS(SELECT 1 FROM integrity_file_reports f WHERE (f.agent_id,f.enrollment_id,f.revision)=(s.agent_id,s.enrollment_id,s.revision)) FROM agents a JOIN console_policy_settings s
 ON a.agent_id=s.agent_id AND a.enrollment_id=s.enrollment_id AND a.desired_policy_revision=s.revision ORDER BY a.agent_id LIMIT 1000`)
 	if err == nil {
 		for rows.Next() {
 			var id string
 			var body []byte
 			var settings ConsoleSettings
-			if err = rows.Scan(&id, &body); err != nil {
+			var measured bool
+			if err = rows.Scan(&id, &body, &measured); err != nil {
 				break
 			}
 			if err = json.Unmarshal(body, &settings); err != nil {
 				break
 			}
-			pending[id] = consolePending(settings)
+			pending[id] = consolePendingWithMeasurement(settings, measured)
 		}
 		if err == nil {
 			err = rows.Err()
@@ -196,7 +201,7 @@ ON a.agent_id=s.agent_id AND a.enrollment_id=s.enrollment_id AND a.desired_polic
 	}
 	now := s.now().UTC()
 	_ = tx.Rollback()
-	respond(w, http.StatusOK, map[string]any{"server_time": now, "agents": consoleAgents, "total_agents": totalAgents, "agents_truncated": totalAgents > len(consoleAgents), "groups": groups, "templates": templates, "defaults": defaultConsoleSettings(now), "enrollment": map[string]any{"central_url": s.enrollmentURL, "ready": s.enrollmentURL != ""}})
+	respond(w, http.StatusOK, map[string]any{"server_time": now, "rule_ids": managed.BuiltinRuleIDs(), "agents": consoleAgents, "total_agents": totalAgents, "agents_truncated": totalAgents > len(consoleAgents), "groups": groups, "templates": templates, "defaults": defaultConsoleSettings(now), "enrollment": map[string]any{"central_url": s.enrollmentURL, "ready": s.enrollmentURL != ""}})
 }
 
 func (s *Server) consoleSaveGroup(w http.ResponseWriter, r *http.Request) {

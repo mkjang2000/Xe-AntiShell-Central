@@ -14,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	contract "github.com/mkjang2000/Xe-AntiShell/protocol/integrity"
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 )
 
@@ -39,10 +40,12 @@ type ConsoleGroup struct {
 }
 
 type ConsoleIntegrity struct {
-	Enabled    bool     `json:"enabled"`
-	Mode       string   `json:"mode"`
-	RequireTPM bool     `json:"require_tpm"`
-	Paths      []string `json:"paths"`
+	PackageFiles bool     `json:"package_files,omitempty"`
+	ConfigSHA256 string   `json:"config_sha256,omitempty"`
+	Enabled      bool     `json:"enabled"`
+	Mode         string   `json:"mode"`
+	RequireTPM   bool     `json:"require_tpm"`
+	Paths        []string `json:"paths"`
 }
 
 // ConsoleSettings retains desired configuration independently of the agent wire
@@ -83,6 +86,9 @@ func (settings ConsoleSettings) validate() error {
 	}
 	if settings.Integrity.Mode != "observe" && settings.Integrity.Mode != "enforce" {
 		return fmt.Errorf("%w: 무결성 모드는 observe 또는 enforce여야 합니다", ErrInvalid)
+	}
+	if settings.Integrity.ConfigSHA256 != "" && (!settings.Integrity.PackageFiles || !contract.ValidDigest(settings.Integrity.ConfigSHA256)) {
+		return fmt.Errorf("%w: 파일 무결성 설정에는 승인된 YAML의 소문자 SHA-256이 필요합니다", ErrInvalid)
 	}
 	if len(settings.Integrity.Paths) > 256 {
 		return fmt.Errorf("%w: 무결성 경로는 256개 이하여야 합니다", ErrInvalid)

@@ -2,7 +2,7 @@
 
 (function (C) {
   const P = {initialized: false, dirty: false, preview: null, selectionRevision: 0};
-  const fields = ["detectionEnabled","extendedRules","privilegeRules","rootExecAlerts","webExecutables","webServices","centralServiceScopes","serviceScopes","shells","allowedPairs","responseMode","responseAction","riskThreshold","minConfidence","requiredCapabilities","monitoringEnabled","sampleInterval","processLimit","uninstallMode","validityHours","integrityEnabled","integrityTPM","integrityMode","integrityPaths"];
+  const fields = ["detectionEnabled","extendedRules","privilegeRules","rootExecAlerts","webExecutables","webServices","centralServiceScopes","serviceScopes","serviceRuleControls","shells","allowedPairs","responseMode","responseAction","riskThreshold","minConfidence","requiredCapabilities","monitoringEnabled","sampleInterval","processLimit","uninstallMode","validityHours","integrityEnabled","integrityTPM","integrityMode","integrityPaths","integrityPackageFiles","integrityConfigSHA"];
   const setValue = (id, value) => { const field = C.id(id); if (field.type === "checkbox") field.checked = Boolean(value); else field.value = value ?? ""; };
   const listValue = value => C.array(value).join("\n");
   const setDirty = dirty => { P.dirty = dirty; C.text("templateDirty", dirty ? "저장하지 않은 변경 사항" : "저장 상태와 일치"); };
@@ -91,9 +91,10 @@
   const canDiscard = async () => !P.dirty || await C.confirm({title:"편집 내용 버리기",description:"저장하지 않은 템플릿 변경 사항이 있습니다. 다른 템플릿을 열면 현재 편집 내용이 사라집니다.",accept:"편집 내용 버리기"});
   const fillSettings = settings => {
     const d = C.object(settings.detection), r = C.object(settings.response), m = C.object(settings.monitoring), i = C.object(settings.integrity);
-    const values = {detectionEnabled:d.enabled,extendedRules:d.extended_process_rules,privilegeRules:d.privilege_rules,rootExecAlerts:d.root_exec_alerts||"suspicious",webExecutables:listValue(d.web_executables),webServices:listValue(d.web_services),shells:listValue(d.shells),allowedPairs:listValue(d.allowed_pairs),responseMode:r.mode,responseAction:r.action,riskThreshold:r.risk_threshold,minConfidence:r.min_confidence,requiredCapabilities:listValue(r.required_capabilities),monitoringEnabled:m.enabled,sampleInterval:m.sample_interval_seconds,processLimit:m.process_limit,uninstallMode:settings.uninstall_mode,validityHours:settings.validity_hours,integrityEnabled:i.enabled,integrityTPM:i.require_tpm,integrityMode:i.mode || "observe",integrityPaths:listValue(i.paths)};
+    const values = {detectionEnabled:d.enabled,extendedRules:d.extended_process_rules,privilegeRules:d.privilege_rules,rootExecAlerts:d.root_exec_alerts||"suspicious",webExecutables:listValue(d.web_executables),webServices:listValue(d.web_services),shells:listValue(d.shells),allowedPairs:listValue(d.allowed_pairs),responseMode:r.mode,responseAction:r.action,riskThreshold:r.risk_threshold,minConfidence:r.min_confidence,requiredCapabilities:listValue(r.required_capabilities),monitoringEnabled:m.enabled,sampleInterval:m.sample_interval_seconds,processLimit:m.process_limit,uninstallMode:settings.uninstall_mode,validityHours:settings.validity_hours,integrityPackageFiles:i.package_files,integrityConfigSHA:i.config_sha256,integrityEnabled:i.enabled,integrityTPM:i.require_tpm,integrityMode:i.mode || "observe",integrityPaths:listValue(i.paths)};
     values.centralServiceScopes = Object.hasOwn(d, "service_observations");
     values.serviceScopes = JSON.stringify(d.service_observations || [], null, 2);
+    values.serviceRuleControls = JSON.stringify(d.service_rule_controls || [], null, 2);
     for (const id of fields) setValue(id, values[id]); fillCapabilityEditor(); responseHelp();
   };
   const fillTemplate = template => {
@@ -113,6 +114,7 @@
     return C.validateSettings(C.settingsFromValues(values));
   };
   const renderLists = () => {
+    C.text("ruleControlIDs", C.array(C.state.rule_ids).join(" · "));
     const selected = C.id("templateID").value;
     C.id("templateList").replaceChildren(...(C.state.templates.length ? C.state.templates.map(template => {
       const button = C.button("", async () => { if (await canDiscard()) fillTemplate(template); }, `select-item${selected === template.id ? " selected" : ""}`);
@@ -151,18 +153,20 @@
     full.append(C.el("summary","","탐지 범위·대응 조건·모니터링 전체 확인"),C.facts([
       ["탐지 / 확장 규칙",`${detection.enabled?"사용":"사용 안 함"} / ${detection.extended_process_rules?"사용":"사용 안 함"}`],
       ["서비스별 파일·TCP 범위", C.serviceScopeSummary(detection)],
+      ["서비스별 규칙", C.array(detection.service_rule_controls).map(c => [c.service,c.rule_id,c.mode,c.reason,c.expires_at].filter(Boolean).join(" · ")).join("\n") || "프로필 기본값"],
       ["전역 root·권한 변경 탐지",detection.privilege_rules?`사용 · ${detection.root_exec_alerts==="all"?"모든 root 실행 경보":"의심 문맥만 경보"} · 자동 종료 대상 아님`:"사용 안 함"],
       ["탐지 셸",C.array(detection.shells).join(" · ")||"없음"],["탐지 예외",C.array(detection.allowed_pairs).join(" · ")||"없음"],
       ["대응 동작",response.action==="terminate"?"프로세스 종료":"동작 없음"],["필수 기능 조건",capabilitySummary(response.required_capabilities)],
       ["자원 모니터링",`${monitoring.enabled?"사용":"사용 안 함"} · ${monitoring.sample_interval_seconds}초 간격 · 프로세스 ${monitoring.process_limit}개`],
-      ["정책 유효 기간",`${settings.validity_hours}시간`],["무결성 초안",integrity.enabled?"활성 초안 · 에이전트 적용 대기":"사용 안 함"]
+      ["정책 유효 기간",`${settings.validity_hours}시간`],["패키지 파일 검사",integrity.package_files?"사용":"사용 안 함"],["추가 무결성 초안",integrity.enabled?"활성 초안 · 에이전트 적용 대기":"사용 안 함"]
     ]),C.raw(settings,"배포할 설정 JSON 보기"));
     notes.push(full);
-    if (C.array(preview.pending_features).includes("integrity")) notes.push(C.el("p", "notice warning", "적용 대기: 무결성 검증은 중앙 초안에만 보존됩니다. 이번 배포에서 에이전트에 적용되지 않습니다."));
+    if (C.array(preview.pending_features).includes("integrity")) notes.push(C.el("p", "notice warning", "추가 무결성 설정(TPM·임의 경로·강제 검증)은 향후 적용을 위해 중앙 초안으로 보관합니다."));
     for (const target of C.array(preview.targets)) for (const warning of C.array(target.warnings)) notes.push(C.el("p", "inline-note", `${target.agent_id}: ${warning}`));
     if (response.mode === "enforce") notes.push(C.el("p", "notice error", "자동 종료 정책입니다. 실제 서비스 프로세스가 종료될 수 있으므로 대상과 예외를 확인하세요. 에이전트 로컬 종료 허용이 별도로 필요합니다."));
     C.id("previewWarnings").replaceChildren(...notes);
     C.id("previewTargets").replaceChildren(C.table("배포 대상과 정책 리비전 변경",["에이전트","현재 → 다음 리비전","현재 등록 ID"],C.array(preview.targets).map(t=>[t.agent_id,`${t.current_revision} → ${t.next_revision}`,t.enrollment_id])));
+    C.policyTrialStart?.(preview);
     C.id("deploymentPreview").scrollIntoView({behavior:"instant",block:"nearest"});
   };
   const previewDeploy = event => {
@@ -206,6 +210,7 @@
     C.id("templateForm").addEventListener("submit",saveTemplate);
     C.id("templateForm").addEventListener("input",() => { setDirty(true); invalidatePreview(); responseHelp(); });
     C.id("deleteTemplate").addEventListener("click",deleteTemplate);
+    C.initPolicyTrials?.();
     C.id("previewForm").addEventListener("submit",previewDeploy);
     C.id("previewForm").addEventListener("change",invalidatePreview);
     C.id("deployConfirm").addEventListener("change",() => { C.id("deployButton").disabled = !C.id("deployConfirm").checked || !P.preview; });

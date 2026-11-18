@@ -54,6 +54,17 @@ test("planned, diagnostic and stale capability evidence stay distinct",()=>{
   assert.equal(active.tone,"good");assert.doesNotMatch(active.note,/INTERNAL|script/);
 });
 
+test("file measurement support, IMA visibility and TPM visibility have independent meanings",()=>{
+  const {C}=model(),cap={implementation:"implemented",state:"supported",runtime_state:"available",details:{contract:"1"}};
+  const files=C.capability("integrity.agent_files",cap,true);
+  assert.equal(files.implementation,"구현됨");assert.equal(files.label,"파일 검사 지원 확인");assert.match(files.note,/검사 결과 조회/);
+  assert.equal(C.capability("integrity.agent_files",{...cap,details:{}},true).label,"파일 검사 지원 미확인");
+  assert.equal(C.capability("integrity.agent_files",cap,false).label,"최신 상태 미확인");
+  const ima=C.capability("integrity.ima",cap,true),tpm=C.capability("integrity.tpm",cap,true);
+  assert.equal(ima.implementation,"환경 진단");assert.match(ima.note,/IMA 측정 목록/);
+  assert.equal(tpm.implementation,"환경 진단");assert.match(tpm.note,/TPM 장치/);
+});
+
 test("live collection evidence takes precedence over contradictory passive diagnostics",()=>{
   const {C}=model();
   for(const name of ["collector.tetragon","collector.audit","observation.process_exec","observation.process_lineage"]){
@@ -145,12 +156,13 @@ test("scoped observation capabilities need their own evidence and describe limit
 });
 
 function settings(C) {
-  return C.settingsFromValues({detectionEnabled:true,extendedRules:true,webExecutables:"nginx\nphp-fpm",webServices:"nginx.service",shells:"sh\nbash",allowedPairs:"maintenance.service:bash",responseMode:"observe",responseAction:"none",riskThreshold:"90",minConfidence:"0.95",requiredCapabilities:"observation.process_exec\nresponse.terminate",monitoringEnabled:true,sampleInterval:"10",processLimit:"200",uninstallMode:"approval_required",validityHours:"24",integrityEnabled:true,integrityTPM:true,integrityMode:"enforce",integrityPaths:"/usr/sbin/sentineld\n/etc/xe-antishell"});
+  return C.settingsFromValues({detectionEnabled:true,extendedRules:true,webExecutables:"nginx\nphp-fpm",webServices:"nginx.service",shells:"sh\nbash",allowedPairs:"maintenance.service:bash",responseMode:"observe",responseAction:"none",riskThreshold:"90",minConfidence:"0.95",requiredCapabilities:"observation.process_exec\nresponse.terminate",monitoringEnabled:true,sampleInterval:"10",processLimit:"200",uninstallMode:"approval_required",validityHours:"24",integrityPackageFiles:true,integrityConfigSHA:"a".repeat(64),integrityEnabled:true,integrityTPM:true,integrityMode:"enforce",integrityPaths:"/usr/sbin/sentineld\n/etc/xe-antishell"});
 }
 test("complete policy form preserves lists, gates, monitoring and pending integrity",()=>{
   const {C}=model(),s=settings(C);C.validateSettings(s);
   assert.equal(s.detection.extended_process_rules,true);assert.equal(s.detection.web_services[0],"nginx.service");
   assert.equal(s.response.required_capabilities.length,2);assert.equal(s.monitoring.process_limit,200);
+  assert.equal(s.integrity.package_files,true);assert.equal(s.integrity.config_sha256,"a".repeat(64));
   assert.equal(s.integrity.mode,"enforce");assert.equal(s.integrity.require_tpm,true);assert.equal(s.integrity.paths.length,2);
   assert.equal(s.validity_hours,24);assert.equal(s.uninstall_mode,"approval_required");
 });
@@ -225,7 +237,7 @@ function appHarness(extra={}) {
 }
 test("fleet shows live collection separately from passive diagnosis and preserves raw evidence",()=>{
   const {C,context}=appHarness();
-  vm.runInContext(source("fleet.js"),context);
+  vm.runInContext(source("file-integrity.js"),context); vm.runInContext(source("fleet.js"),context);
   const report={probed_at:"2026-11-17T02:59:00Z",capabilities:{"collector.tetragon":{state:"unsupported",implementation:"implemented",runtime_state:"active",verified_at:"2026-11-17T02:59:55Z",reason:"neither tetragon nor tetra executable was found"}}};
   C.state.agents=[agent({heartbeat:{sent_at:"2026-11-17T02:59:50Z",status:{collector:"tetragon-json",health:"healthy",capability_report:report}}})];
   C.selectedAgent="web-01";C.renderAgentDetail(false);
@@ -239,7 +251,7 @@ test("fleet shows live collection separately from passive diagnosis and preserve
   assert.notEqual(raw.open,true);assert.deepEqual(JSON.parse(raw.children[1].textContent),report);
 });
 test("fleet presents interpreter, file and network scopes with separate evidence states",()=>{
-  const {C,context}=appHarness();vm.runInContext(source("fleet.js"),context);
+  const {C,context}=appHarness();vm.runInContext(source("file-integrity.js"),context); vm.runInContext(source("fleet.js"),context);
   const report={probed_at:"2026-11-17T02:59:00Z",capabilities:{
     "observation.interpreter_exec":{state:"limited",implementation:"implemented",runtime_state:"unverified"},
     "observation.file":{state:"limited",implementation:"implemented",runtime_state:"active",verified_at:"2026-11-17T02:59:55Z"},
@@ -255,7 +267,7 @@ test("fleet presents interpreter, file and network scopes with separate evidence
   assert.match(text(C.id("agentDetailBody")),/전용 정책 파일만으로.*확인되지는 않습니다/);
 });
 test("fresh fleet snapshots retain static and inactive states while active evidence expires separately",()=>{
-  const {C,context}=appHarness();vm.runInContext(source("fleet.js"),context);
+  const {C,context}=appHarness();vm.runInContext(source("file-integrity.js"),context); vm.runInContext(source("fleet.js"),context);
   const old="2026-11-17T02:00:00Z",cap=(state,runtime_state,extra={})=>({state,implementation:"implemented",runtime_state,...extra});
   const report={probed_at:old,capabilities:{
     "host.platform":cap("supported","available"),"kernel.btf":cap("supported","available"),"kernel.cgroup":cap("supported","available"),

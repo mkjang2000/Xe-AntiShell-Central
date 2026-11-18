@@ -50,6 +50,8 @@ func (s *Server) AgentHandler() http.Handler {
 	mux.HandleFunc("POST /v1/heartbeat", s.withAgent(s.heartbeat))
 	mux.HandleFunc("GET /v1/policy", s.withAgent(s.policy))
 	mux.HandleFunc("POST /v1/update/status", s.withAgent(s.updateStatus))
+	mux.HandleFunc("GET /v1/integrity/files", s.withAgent(s.fileIntegrityDesired))
+	mux.HandleFunc("POST /v1/integrity/files", s.withAgent(s.fileIntegrityReceived))
 	mux.HandleFunc("GET /v1/update", s.withAgent(s.updateDesired))
 	mux.HandleFunc("GET /v1/update/artifacts/{sha256}", s.withAgent(s.updateArtifact))
 	mux.HandleFunc("POST /v1/update/claim", s.withAgent(s.updateClaim))

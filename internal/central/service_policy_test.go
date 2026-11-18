@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	contract "github.com/mkjang2000/Xe-AntiShell/protocol/integrity"
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 	"github.com/mkjang2000/Xe-AntiShell/protocol/model"
 )
@@ -65,5 +66,54 @@ func TestServiceScopeDeploymentRequiresSupportIncludingEmptyOverrides(t *testing
 	got := signed.Policy.Detection.ServiceObservations
 	if got == nil || len(*got) != 0 {
 		t.Fatal("empty override lost in policy storage")
+	}
+}
+
+func TestServiceRuleControlsUseIndependentContractAtPreviewAndDeploy(t *testing.T) {
+	f := setup(t)
+	a, cert, _ := f.enroll(t, "agent-a")
+	f.consoleDrafts(t, []string{a.AgentID})
+	now := time.Now().UTC()
+	end := now.Add(time.Hour)
+	settings := defaultConsoleSettings(now)
+	settings.Integrity.PackageFiles = true
+	settings.Detection.ServiceRuleControls = []managed.ServiceRuleControl{{Service: "web.service", RuleID: managed.RuleWebDescendantShell, Mode: "suppress_until", Reason: "maintenance", ExpiresAt: &end}}
+	consoleWant(t, f.console(t, "POST", "/api/templates", ConsoleTemplate{ID: "default", Name: "Controls", Version: 1, Settings: settings}), 200, nil)
+	h := privilegeHeartbeat(a.AgentID, a.EnrollmentID, now)
+	caps := h.Status.CapabilityReport.Capabilities
+	caps["detection.service_observations"] = model.Capability{Implementation: "implemented", RuntimeState: "available", Details: map[string]string{"contract": "1"}}
+	put := func() {
+		t.Helper()
+		h.SentAt = time.Now().UTC()
+		if err := f.store.Heartbeat(context.Background(), a.AgentID, h, h.SentAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put()
+	target := consolePreviewRequest{TemplateID: "default", GroupIDs: []string{"web"}}
+	consoleWant(t, f.console(t, "POST", "/api/deploy/preview", target), 400, nil)
+	direct := settings.wirePolicy("rule-controls", a.AgentID, a.EnrollmentID, 1, now)
+	consoleWant(t, f.request(t, "POST", "/admin/policy", direct, nil, f.operator(t)), 400, nil)
+	caps["detection.service_rule_controls"] = model.Capability{Implementation: "implemented", RuntimeState: "available", Details: map[string]string{"contract": "1"}}
+	put()
+	preview := f.preview(t)
+	delete(caps, "detection.service_rule_controls")
+	put()
+	consoleWant(t, f.deploy(t, preview), 409, nil)
+	caps["detection.service_rule_controls"] = model.Capability{Implementation: "implemented", RuntimeState: "available", Details: map[string]string{"contract": "1"}}
+	put()
+	consoleWant(t, f.deploy(t, f.preview(t)), 200, nil)
+	saved, err := f.store.LatestPolicy(context.Background(), a.AgentID, a.EnrollmentID)
+	if err != nil || len(saved.Policy.Detection.ServiceRuleControls) != 1 {
+		t.Fatalf("missing saved controls: %v", err)
+	}
+	if got := saved.Policy.Detection.ServiceRuleControls[0]; got.RuleID != managed.RuleWebDescendantShell || got.Reason != "maintenance" || !got.ExpiresAt.Equal(end) {
+		t.Fatalf("signed control mismatch %+v", got)
+	}
+	var assignment contract.Assignment
+	consoleWant(t, f.request(t, "GET", "/v1/integrity/files", nil, cert, ""), 200, &assignment)
+	digest, err := contract.PolicyDigest(saved)
+	if err != nil || assignment.Revision != saved.Policy.Revision || assignment.PolicySHA256 != digest {
+		t.Fatalf("file measurement failed to bind deployed rule controls: %+v %v", assignment, err)
 	}
 }

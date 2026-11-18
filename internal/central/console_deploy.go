@@ -149,10 +149,18 @@ func consoleSnapshot(ctx context.Context, tx *sql.Tx, request consolePreviewRequ
 }
 
 func consolePending(settings ConsoleSettings) []string {
+	return consolePendingWithMeasurement(settings, false)
+}
+
+func consolePendingWithMeasurement(settings ConsoleSettings, measured bool) []string {
+	pending := []string{}
 	if settings.Integrity.Enabled {
-		return []string{"integrity"}
+		pending = append(pending, "integrity")
 	}
-	return []string{}
+	if settings.Integrity.PackageFiles && !measured {
+		pending = append(pending, "integrity.agent_files")
+	}
+	return pending
 }
 
 func consolePolicyWarnings(settings ConsoleSettings, body []byte, now time.Time) []string {
@@ -324,38 +332,10 @@ func (s *Server) consoleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, target := range after.Targets {
 		policy := template.Settings.wirePolicy(template.ID, target.AgentID, target.EnrollmentID, target.NextRevision, now)
-		signed, signErr := managed.SignPolicy(policy, s.material.PolicyKeyID, s.material.PolicyKey)
-		if signErr != nil {
-			_ = tx.Rollback()
-			s.consoleError(w, "deployment policy signing", fmt.Errorf("%w: 이 대상에 적용할 수 없는 정책입니다", ErrInvalid))
-			return
-		}
-		body, marshalErr := json.Marshal(signed)
-		if marshalErr != nil {
-			_ = tx.Rollback()
-			s.consoleError(w, "deployment policy encoding", marshalErr)
-			return
-		}
-		if _, err = tx.ExecContext(r.Context(), "INSERT INTO policies(agent_id,enrollment_id,revision,signed_json) VALUES(?,?,?,?)", target.AgentID, target.EnrollmentID, target.NextRevision, body); err == nil {
-			var result sql.Result
-			result, err = tx.ExecContext(r.Context(), "UPDATE agents SET desired_policy_revision=? WHERE agent_id=? AND enrollment_id=? AND desired_policy_revision=? AND revoked=0", target.NextRevision, target.AgentID, target.EnrollmentID, target.CurrentRevision)
-			if err == nil {
-				var count int64
-				count, err = result.RowsAffected()
-				if err == nil && count != 1 {
-					err = ErrConflict
-				}
-			}
-		}
+		var settings []byte
+		settings, err = json.Marshal(template.Settings)
 		if err == nil {
-			var settingsBody []byte
-			settingsBody, err = json.Marshal(template.Settings)
-			if err == nil {
-				_, err = tx.ExecContext(r.Context(), "INSERT INTO console_policy_settings(agent_id,enrollment_id,revision,settings_json) VALUES(?,?,?,?)", target.AgentID, target.EnrollmentID, target.NextRevision, settingsBody)
-			}
-		}
-		if err == nil {
-			err = appendAudit(r.Context(), tx, target.AgentID, "policy.assigned", map[string]any{"revision": target.NextRevision, "policy_id": policy.ID, "enrollment_id": target.EnrollmentID, "template_version": template.Version, "pending_features": consolePending(template.Settings)}, now)
+			err = s.issueConsolePolicy(r.Context(), tx, policy, target.CurrentRevision, settings, now, map[string]any{"revision": target.NextRevision, "policy_id": policy.ID, "enrollment_id": target.EnrollmentID, "template_version": template.Version, "pending_features": consolePending(template.Settings)})
 		}
 		if err != nil {
 			_ = tx.Rollback()

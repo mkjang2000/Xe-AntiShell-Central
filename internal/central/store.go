@@ -130,7 +130,10 @@ func (s *Store) initializeSchema(ctx context.Context, version int) error {
 	if _, err = tx.ExecContext(ctx, historyReadSchema); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, updateSchema); err != nil {
+	if _, err = tx.ExecContext(ctx, trialSchema+trialTicketSchema); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, updateSchema+fileIntegritySchema); err != nil {
 		return err
 	}
 	var updateVersion int

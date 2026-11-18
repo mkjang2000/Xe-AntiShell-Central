@@ -19,6 +19,7 @@ Xe-AntiShell-Central/
 ├── cmd/sentinel-central/          # Thin init/token/server CLI
 ├── internal/central/              # PKI, SQLite, agent and operator HTTP APIs
 │   ├── enrollment_code.go        # Certificate-bound endpoint config and installation-code issuance
+│   ├── policy_trial*.go         # Bound local comparisons, single-agent rollout, promotion and recovery
 │   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
 │   ├── delivery_receipts.go      # Compact per-stream replay checks and schema 4 cursor migration
 │   ├── capacity.go               # On-demand read-only storage and expiry statistics
@@ -31,6 +32,8 @@ Xe-AntiShell-Central/
 │   ├── history_page.go           # Same-snapshot record lookup and bounded response pagination
 │   ├── history_audit.go          # Bounded audit metadata/detail reads on the history pool
 │   ├── agent_errors.go           # Durable deduplicated error transitions from heartbeats
+│   ├── integrity_baselines.go    # Seven publisher-authenticated RPM file SHA-256 baselines
+│   ├── integrity_reports.go      # Enrollment/revision-bound evidence, expiry and per-file verdicts
 │   ├── privilege_policy.go        # Current-enrollment engine compatibility gate for opt-in policies
 │   ├── privilege_evidence.go      # Paired credential proof validation before ingest
 │   └── updates_*.go              # Publisher-verified RPM/GitHub catalog, signed jobs/claims/reports
@@ -40,6 +43,7 @@ Xe-AntiShell-Central/
 │   ├── accounts_auth.go          # Per-request identity and role authorization
 │   ├── accounts_http.go          # Account/password administration APIs
 │   └── assets/                    # Korean fleet, policies, histories and dark/light themes
+│       ├── file-integrity.js     # Operator file measurement details and comparison digests
 │       ├── privilege.js          # Root/credential findings and bounded before/after evidence presentation
 │       ├── accounts.js           # Compact account list, dialogs and permission help
 │       ├── accounts.css          # Account table/dialog/tooltip responsive presentation

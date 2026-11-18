@@ -67,6 +67,7 @@ func (s *Server) publishUpdateRelease(ctx context.Context, body io.Reader, actor
 		return ConsoleUpdateRelease{}, false, err
 	}
 	defer os.Remove(path)
+	baselines := importFileBaselines(ctx, path, publisher.Manifest)
 	s.updateBlobs.mu.Lock()
 	defer s.updateBlobs.mu.Unlock()
 	tx, err := s.store.db.BeginTx(ctx, nil)
@@ -82,6 +83,12 @@ func (s *Server) publishUpdateRelease(ctx context.Context, body io.Reader, actor
 			return item, false, err
 		}
 		if err = s.verifyUpdatePublisher(item.Publisher); err != nil {
+			return item, false, err
+		}
+		if err = storeImportedBaselines(ctx, tx, digest, baselines); err != nil {
+			return item, false, err
+		}
+		if err = tx.Commit(); err != nil {
 			return item, false, err
 		}
 		item.PublisherVerified = true
@@ -125,6 +132,9 @@ func (s *Server) publishUpdateRelease(ctx context.Context, body io.Reader, actor
 		}
 	}()
 	_, err = tx.ExecContext(ctx, "INSERT INTO update_releases(id,metadata_json,uploaded_by,deleted) VALUES(?,?,?,0) ON CONFLICT(id) DO UPDATE SET metadata_json=excluded.metadata_json,uploaded_by=excluded.uploaded_by,deleted=0", digest, metadata, actor)
+	if err == nil {
+		err = storeImportedBaselines(ctx, tx, digest, baselines)
+	}
 	if err == nil {
 		err = appendAudit(ctx, tx, "", "update.release.uploaded", map[string]any{"release_id": digest, "actor": actor, "size": size}, now)
 	}

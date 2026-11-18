@@ -19,6 +19,7 @@ func TestUpdateRolesAndStreamingBodyLimit(t *testing.T) {
 		adminOnly    bool
 	}{
 		{"POST", "/api/updates/releases", true}, {"POST", "/api/updates/releases/digest/delete", true}, {"POST", "/api/updates/github/import", true},
+		{"POST", "/api/policy-trials", false}, {"POST", "/api/policy-trials/trial-one/report", false}, {"POST", "/api/policy-trials/trial-one/preview", false}, {"POST", "/api/policy-trials/trial-one/apply", false},
 		{"POST", "/api/updates/preview", false}, {"POST", "/api/updates/rollouts", false}, {"POST", "/api/updates/rollouts/rollout-a/cancel", false},
 	} {
 		for _, role := range []struct {
@@ -34,7 +35,7 @@ func TestUpdateRolesAndStreamingBodyLimit(t *testing.T) {
 			}
 		}
 	}
-	for _, path := range []string{"/api/updates/releases", "/api/updates/agents", "/api/updates/rollouts", "/api/updates/rollouts/rollout-a", "/api/updates/github/releases"} {
+	for _, path := range []string{"/api/policy-trials", "/api/policy-trials/trial-one", "/api/updates/releases", "/api/updates/agents", "/api/updates/rollouts", "/api/updates/rollouts/rollout-a", "/api/updates/github/releases"} {
 		for _, cookie := range []*http.Cookie{admin, operator, viewer} {
 			if response := accountRequest(t, s, cookie, "GET", path, nil, false); response.Code != 200 {
 				t.Fatalf("read %s denied: %d", path, response.Code)

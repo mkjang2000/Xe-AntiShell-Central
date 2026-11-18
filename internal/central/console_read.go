@@ -50,11 +50,12 @@ func (s *Server) consoleAgentPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := map[string]any{"policy": signed.Policy, "pending_features": []string{}}
-	err = tx.QueryRowContext(r.Context(), "SELECT settings_json FROM console_policy_settings WHERE agent_id=? AND enrollment_id=? AND revision=?", id, enrollment, signed.Policy.Revision).Scan(&body)
+	var measured bool
+	err = tx.QueryRowContext(r.Context(), `SELECT s.settings_json,EXISTS(SELECT 1 FROM integrity_file_reports f WHERE (f.agent_id,f.enrollment_id,f.revision)=(s.agent_id,s.enrollment_id,s.revision)) FROM console_policy_settings s WHERE s.agent_id=? AND s.enrollment_id=? AND s.revision=?`, id, enrollment, signed.Policy.Revision).Scan(&body, &measured)
 	if err == nil {
 		var settings ConsoleSettings
 		if err = json.Unmarshal(body, &settings); err == nil {
-			response["desired_settings"], response["pending_features"] = settings, consolePending(settings)
+			response["desired_settings"], response["pending_features"] = settings, consolePendingWithMeasurement(settings, measured)
 		}
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {

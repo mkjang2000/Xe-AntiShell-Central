@@ -11,7 +11,7 @@ import (
 // A fresh engine contract is required for every optional wire extension.
 // Observation receipts are tracked separately and may arrive after deployment.
 func requireDetectionPolicySupport(detection managed.DetectionPolicy, body []byte, agentID, enrollmentID string, now time.Time) error {
-	if !detection.PrivilegeRules && detection.ServiceObservations == nil {
+	if !detection.PrivilegeRules && detection.ServiceObservations == nil && len(detection.ServiceRuleControls) == 0 {
 		return nil
 	}
 	var heartbeat managed.Heartbeat
@@ -24,6 +24,9 @@ func requireDetectionPolicySupport(detection managed.DetectionPolicy, body []byt
 	}
 	if detection.PrivilegeRules && (heartbeat.Status.Collector != "tetragon-json" || !supported("detection.privilege_rules")) {
 		return fmt.Errorf("%w: %s에서 전역 root·권한 변경 탐지 지원을 확인하세요", ErrInvalid, agentID)
+	}
+	if len(detection.ServiceRuleControls) > 0 && !supported("detection.service_rule_controls") {
+		return fmt.Errorf("%w: %s에서 서비스별 규칙 제어·만료 예외 정책 지원을 확인하세요", ErrInvalid, agentID)
 	}
 	if detection.ServiceObservations != nil && !supported("detection.service_observations") {
 		return fmt.Errorf("%w: %s에서 서비스별 파일·TCP 서명 정책 지원을 확인하세요", ErrInvalid, agentID)
