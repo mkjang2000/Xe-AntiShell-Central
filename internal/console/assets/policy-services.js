@@ -118,7 +118,8 @@
     const warning = C.el("small", "scope-warning");
     const renderWarnings = () => {
       const listed = C.lines(id("webServices").value);
-      warning.textContent = scope.service && !listed.includes(scope.service) ? "탐지 탭의 웹 서비스 목록에 없는 서비스입니다. 목록에 추가해야 범위가 적용됩니다." : "";
+      const dynamic = id("policyServiceScope").value === "all_listening";
+      warning.textContent = !scope.service ? "" : dynamic ? "배포 미리보기에서 대상별 웹 서비스에 포함되는지 확인하세요." : !listed.includes(scope.service) ? "탐지 탭의 웹 서비스 목록에 없는 서비스입니다. 목록에 추가해야 범위가 적용됩니다." : "";
     };
     renderWarnings(); scope.renderWarnings = renderWarnings;
     const head = C.el("div", "scope-head");
@@ -143,9 +144,10 @@
     id("serviceScopeRows").replaceChildren(...scopes.map(scopeRow));
   }
 
-  // Service name suggestions come from every place this policy names a service.
   function renderNames() {
-    const names = new Set([...C.lines(id("webServices").value), ...controls.map(c => c.service), ...scopes.map(s => s.service)].filter(Boolean));
+    const fixed = id("policyServiceScope").value === "all_listening" ? [] : C.lines(id("webServices").value);
+    const observed = C.policyInventory?.suggestedNames() || [];
+    const names = new Set([...fixed, ...controls.map(c => c.service), ...scopes.map(s => s.service), ...observed].filter(Boolean));
     id("policyServiceNames").replaceChildren(...[...names].sort().map(name => { const option = C.el("option"); option.value = name; return option; }));
   }
 
@@ -230,6 +232,7 @@
       return out;
     },
     counts: () => ({controls: controls.length, scopes: id("centralServiceScopes").checked ? scopes.length : null}),
+    refreshNameHints() { renderNames(); for (const scope of scopes) scope.renderWarnings?.(); },
     render() { renderControls(); renderScopes(); renderNames(); }
   };
 })(globalThis.XEC);

@@ -15,3 +15,15 @@ func TestFileIntegrityReadRole(t *testing.T) {
 		t.Fatal("viewer can change file baselines")
 	}
 }
+
+func TestServiceInventoryReadRole(t *testing.T) {
+	path := "/api/agents/host/service-inventory"
+	for _, role := range []Role{RoleOperator, RoleViewer} {
+		if !allowsAPI(role, http.MethodGet, path) || allowsAPI(role, http.MethodPost, path) {
+			t.Fatal(role)
+		}
+	}
+	if allowsAPI("", http.MethodGet, path) || allowsAPI(RoleViewer, http.MethodGet, path+"/other") {
+		t.Fatal("service inventory read bypassed account or route limits")
+	}
+}

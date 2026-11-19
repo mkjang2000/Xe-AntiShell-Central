@@ -16,6 +16,7 @@
   <script src="/assets/privilege.js" defer></script>
   <script src="/assets/access.js" defer></script>
   <script src="/assets/file-integrity.js" defer></script>
+  <script src="/assets/service-inventory.js" defer></script>
   <script src="/assets/fleet.js" defer></script>
   <script src="/assets/policy-trials.js" defer></script>
   <script src="/assets/policy-services.js" defer></script>
@@ -127,13 +128,23 @@
               <section id="policySection-detection" class="policy-section" aria-label="탐지" hidden>
                 <label class="option-row"><input id="detectionEnabled" type="checkbox" checked><span><strong>탐지 엔진 사용</strong><small>웹 출처 규칙과 전역 규칙을 실행합니다. 끄면 탐지와 대응이 모두 멈춥니다.</small></span></label>
                 <fieldset><legend>웹 출처 탐지 대상</legend>
-                  <p class="field-note">웹 서버·웹 서비스에서 시작된 셸 실행을 탐지합니다. 한 줄에 하나씩, 실행 파일은 경로 없이 이름만 입력합니다.</p>
+                  <div class="field"><label for="policyServiceScope">서비스 적용 범위</label><select id="policyServiceScope" aria-describedby="policyServiceScopeNote">
+                    <option value="">기존 실행 파일·서비스 기준</option><option value="selected">지정된 서비스</option><option value="all_listening">발견된 모든 서비스</option>
+                  </select><small id="policyServiceScopeNote"></small></div>
                   <div class="form-grid">
-                    <div class="field"><label for="webExecutables">웹 실행 파일</label><textarea id="webExecutables" rows="4" spellcheck="false" placeholder="nginx&#10;php-fpm"></textarea></div>
-                    <div class="field"><label for="webServices">웹 서비스 (systemd 유닛)</label><textarea id="webServices" rows="4" spellcheck="false" placeholder="nginx.service&#10;my-app.service"></textarea></div>
+                    <div class="field" id="webExecutablesField"><label for="webExecutables">웹 실행 파일</label><textarea id="webExecutables" rows="4" spellcheck="false" placeholder="nginx&#10;php-fpm"></textarea><small>경로 없이 한 줄에 하나씩 입력하세요.</small></div>
+                    <div class="field" id="webServicesField"><label for="webServices">웹 서비스 (systemd 유닛)</label><textarea id="webServices" rows="4" spellcheck="false" placeholder="nginx.service&#10;my-app.service"></textarea><small>직접 입력하거나 아래 목록에서 추가하세요.</small></div>
                     <div class="field"><label for="shells">탐지할 셸</label><textarea id="shells" rows="4" spellcheck="false" placeholder="sh&#10;bash"></textarea></div>
                     <div class="field"><label for="allowedPairs">탐지 예외 (출처:실행 파일)</label><textarea id="allowedPairs" rows="4" spellcheck="false" placeholder="maintenance.service:bash"></textarea></div>
                   </div>
+                  <details class="editor-section" id="policyServiceInventory">
+                    <summary>에이전트의 서비스 목록</summary>
+                    <div class="inventory-toolbar">
+                      <div class="field"><label for="policyInventoryAgent">서비스를 조회할 에이전트</label><select id="policyInventoryAgent"><option value="">에이전트 선택</option></select></div>
+                      <button id="policyInventoryRefresh" type="button" class="small" disabled>다시 조회</button>
+                    </div>
+                    <div id="policyInventoryResult" class="service-inventory-result" aria-live="polite"></div>
+                  </details>
                 </fieldset>
                 <fieldset><legend>추가 규칙</legend>
                   <label class="option-row"><input id="extendedRules" type="checkbox"><span><strong>확장 실행 규칙</strong><small>웹 출처의 다운로드·정찰 도구, 인터프리터, 임시 경로 실행까지 탐지합니다. 켜면 기본 셸 규칙을 포함한 모든 규칙이 탐지 전용으로 기록되어 대응이 동작하지 않습니다.</small></span></label>

@@ -26,7 +26,7 @@ class Element {
   descendants() { return this.children.flatMap(node => typeof node === "string" ? [] : [node, ...node.descendants()]); }
 }
 
-function harness(keys = [], previewKeys = keys) {
+function harness(keys = [], previewKeys = keys, options = {}) {
   const document = {nodes: {}, activeElement: null, createElement(tag) { return new Element(tag, this); }};
   document.getElementById = id => {
     if (!document.nodes[id]) { const node = new Element("div", document); node.id = id; }
@@ -43,22 +43,25 @@ function harness(keys = [], previewKeys = keys) {
   };
   const template = {id: "ops", name: "운영 정책", description: "기존 템플릿", version: 1, settings};
   const requests = [], errors = []; let pending;
+  C.session = {role: "operator"};
   C.options = () => {}; C.choices = () => {}; C.checked = id => id === "deployAgents" ? ["web-01"] : [];
   C.confirm = async () => true; C.refresh = async () => {}; C.notify = () => {};
   C.run = (_button, operation) => { pending = Promise.resolve().then(operation).catch(error => { errors.push(error.message); }); return pending; };
-  C.request = async (path, options) => {
-    requests.push({path, body: plain(options.body)});
-    if (path === "/api/templates") return {...options.body, version: Number(options.body.version) + 1};
+  C.request = async (path, request) => {
+    requests.push({path, body: request?.body === undefined ? undefined : plain(request.body)});
+    if (path === "/api/templates") return {...request.body, version: Number(request.body.version) + 1};
     if (path === "/api/deploy/preview") {
       const actual = structuredClone(template); actual.version = 2; actual.settings.response.required_capabilities = previewKeys.slice();
-      return {preview_token: "exact-server-preview", template: actual, targets: [{agent_id: "web-01", enrollment_id: "current", current_revision: 1, next_revision: 2, warnings: []}], pending_features: []};
+      if (options.scopedPreview) Object.assign(actual.settings, {service_scope: "all_listening", detection: {...actual.settings.detection, web_executables: [], web_services: []}});
+      return {preview_token: "exact-server-preview", template: actual, targets: [{agent_id: "web-01", enrollment_id: "current", current_revision: 1, next_revision: 2, warnings: []}], pending_features: [], ...options.preview};
     }
     if (path === "/api/deploy") return {targets: [{agent_id: "web-01"}]};
+    if (options.inventory && path.endsWith("/service-inventory")) return options.inventory(path);
     throw new Error(`Unexpected request: ${path}`);
   };
-  for (const name of ["policy-services.js", "policy-diff.js", "policy.js"]) vm.runInContext(source(name), context);
+  for (const name of ["service-inventory.js", "policy-services.js", "policy-diff.js", "policy.js"]) vm.runInContext(source(name), context);
   C.initPolicy();
-  C.updateState({defaults: settings, templates: [template], agents: [], groups: [], rule_ids: ["web-descendant-shell", "web-descendant-download-tool", "service-protected-file-write"]});
+  C.updateState({defaults: settings, templates: [template], agents: options.agents || [], groups: [], rule_ids: ["web-descendant-shell", "web-descendant-download-tool", "service-protected-file-write"]});
   const editor = C.id("requiredCapabilitiesEditor");
   const choices = editor.descendants().filter(node => node.tagName === "input");
   return {
@@ -86,6 +89,114 @@ test("capability editor preserves existing order, custom and unsupported keys on
   await h.submit();
   assert.deepEqual(h.errors, []); assert.deepEqual(h.requests[0].body.settings.response.required_capabilities, keys);
   assert.deepEqual(h.requests[0].body.settings, before.settings); assert.deepEqual(plain(h.template), before);
+});
+
+test("policy scopes preserve legacy defaults and compile exact manual selections or discovered-only drafts", async () => {
+  const h = harness(); await h.open();
+  h.set("policyServiceScope", "selected", "change");
+  assert.equal(h.C.id("webExecutablesField").hidden, true);
+  for (const invalid of ["", "*.service", "nginx.service\nNGINX.service"]) {
+    h.set("webServices", invalid); await h.submit();
+    assert.match(h.errors.at(-1), /지정된 서비스/);
+    assert.equal(h.requests.length, 0);
+  }
+  h.set("webServices", "nginx.service\npm2-app.service");
+  await h.submit();
+  assert.equal(h.settings().service_scope, "selected");
+  assert.deepEqual(h.settings().detection.web_services, ["nginx.service", "pm2-app.service"]);
+  assert.deepEqual(h.settings().detection.web_executables, []);
+  h.set("policyServiceScope", "all_listening", "change");
+  assert.equal(h.C.id("webServicesField").hidden, true);
+  await h.submit();
+  assert.equal(h.settings().service_scope, "all_listening");
+  assert.deepEqual(h.settings().detection.web_services, []);
+  assert.deepEqual(h.settings().detection.web_executables, []);
+  assert.deepEqual(h.settings().detection.shells, ["sh", "bash"]);
+});
+
+test("discovered preview shows exact scopes before accepting the server's deployment token", async () => {
+  const serviceTargets = [{agent_ids: ["web-01"], services: ["nginx.service", "php-fpm.service"]}];
+  const h = harness([], [], {scopedPreview: true, preview: {service_targets: serviceTargets}});
+  await h.open(); await h.preview();
+  assert.deepEqual(h.errors, []);
+  assert.match(text(h.C.id("previewServiceTargets")), /web-01.*nginx\.service.*php-fpm\.service/s);
+  assert.match(text(h.C.id("trialStart")), /한 대를 먼저 선택/);
+  await h.deploy();
+  assert.deepEqual(h.requests.at(-1), {path: "/api/deploy", body: {preview_token: "exact-server-preview", confirm: true}});
+});
+
+test("missing, malformed or duplicate scope groups cannot enable deployment confirmation", async () => {
+  const second = {agent_id: "web-02", enrollment_id: "other", current_revision: 1, next_revision: 2, warnings: []};
+  const first = {...second, agent_id: "web-01"};
+  const a = {agent_ids: ["web-01"], services: ["nginx.service"]};
+  const b = {agent_ids: ["web-02"], services: ["php-fpm.service"]};
+  for (const groups of [undefined, [], [a], [a, a], [a, {...b, agent_ids: ["web-03"]}], [a, {...b, services: []}],
+    [a, {...b, services: ["php-fpm.service", "PHP-FPM.service"]}], [a, {...b, services: ["*.service"]}]]) {
+    const h = harness([], [], {scopedPreview: true, preview: {targets: [first, second], service_targets: groups}});
+    await h.open(); await h.preview();
+    assert.match(h.errors.at(-1), /목록이 배포 대상과 일치하지 않습니다/);
+    assert.equal(h.C.id("deploymentPreview").hidden, true);
+    await h.deploy();
+    assert.equal(h.C.id("deployButton").disabled, true);
+    assert.equal(h.requests.some(item => item.path === "/api/deploy"), false);
+  }
+});
+
+const inventoryAgent = (id, enrollment = "enrolled") => ({agent_id: id, enrollment_id: enrollment});
+const inventoryReply = (agent, state, listeners, time = new Date().toISOString()) => ({...agent, state, sampled_at: time, received_at: time, listeners});
+const listener = (service, port) => ({service, port, family: "ipv4", binding: "wildcard"});
+
+test("picker preserves the current host after races and only adds attributed fresh names", async () => {
+  const a = inventoryAgent("web-01"), b = inventoryAgent("web-02");
+  let finishFirst;
+  const pending = new Promise(resolve => { finishFirst = resolve; });
+  const reply = inventoryReply(b, "partial", [listener("nginx.service", 443), listener("nginx.service", 80), listener(undefined, 9000)]);
+  const h = harness([], [], {agents: [a, b], inventory: path => path.includes("web-01") ? pending : reply});
+  await h.open();
+  const picker = h.C.id("policyServiceInventory"), select = h.C.id("policyInventoryAgent"), result = h.C.id("policyInventoryResult");
+  picker.open = true;
+  select.value = a.agent_id; const first = select.fire("change");
+  select.value = b.agent_id; await select.fire("change");
+  finishFirst(inventoryReply(a, "complete", [listener("another.service", 444)])); await first;
+  assert.equal(h.C.hasUnsavedPolicy(), false);
+  assert.match(text(result), /일부 수집.*nginx\.service.*443.*소속 미확인.*9000/s);
+  assert.doesNotMatch(text(result), /another\.service/);
+  assert.deepEqual(h.C.id("policyServiceNames").children.map(node => node.value), ["nginx.service"]);
+  const buttons = result.descendants().filter(node => node.tagName === "button");
+  assert.equal(buttons.length, 2);
+  buttons[0].fire("click");
+  assert.equal(h.C.hasUnsavedPolicy(), true);
+  assert.equal(h.C.id("webServices").value, "nginx.service");
+  assert.equal(buttons[1].disabled, true);
+});
+
+test("stale inventory is visible for reference but cannot supply choices or autocomplete", async () => {
+  const agent = inventoryAgent("web-01");
+  const snapshot = inventoryReply(agent, "complete", [listener("nginx.service", 443)], new Date(Date.now() - 4 * 60000).toISOString());
+  const h = harness([], [], {agents: [agent], inventory: () => snapshot});
+  await h.open();
+  h.C.id("policyServiceInventory").open = true; h.C.id("policyInventoryAgent").value = agent.agent_id;
+  await h.C.id("policyInventoryAgent").fire("change");
+  const view = h.C.id("policyInventoryResult");
+  assert.match(text(view), /이전 보고.*nginx\.service/s);
+  assert.equal(view.descendants().some(node => node.tagName === "button"), false);
+  assert.equal(h.C.id("policyServiceNames").children.length, 0);
+});
+
+test("agent detail is read-only and labels a mismatched enrollment instead of using its report", async () => {
+  const current = inventoryAgent("web-01"), changed = inventoryAgent("web-01", "replacement");
+  let reply = inventoryReply(changed, "complete", [listener("nginx.service", 443)]);
+  const h = harness([], [], {agents: [current], inventory: () => reply});
+  h.C.session = {role: "viewer"};
+  const section = h.C.agentServiceInventory(current);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(text(section), /등록이 변경/);
+  assert.doesNotMatch(text(section), /nginx/);
+  reply = inventoryReply(current, "complete", [listener("nginx.service", 443)]);
+  await section.descendants().find(node => node.tagName === "button").fire("click");
+  assert.match(text(section), /대기 중인 TCP 서비스.*전체 수집.*nginx\.service.*443/s);
+  assert.equal(section.descendants().filter(node => node.tagName === "button").length, 1);
+  assert.equal(h.C.agentServiceInventory({...current, revoked: true}), null);
 });
 
 test("editing monitoring preserves an archived integrity draft and warns of zero response rules", async () => {

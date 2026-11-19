@@ -26,6 +26,8 @@ Xe-AntiShell-Central/
 │   ├── application_bindings.go   # Resolve template versions into signed service policies
 │   ├── application_status.go     # Match reported revisions and digests to immutable policies
 │   ├── console_assignments.go    # Template behind each desired revision and preview current-policy groups
+│   ├── service_inventory.go      # Validate current-enrollment listener inventory and expose it to operators
+│   ├── policy_service_scope.go   # Resolve and bind per-agent service sets during policy deployment
 │   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
 │   ├── delivery_receipts.go      # Compact per-stream replay checks and schema 4 cursor migration
 │   ├── capacity.go               # On-demand read-only storage and expiry statistics
@@ -50,6 +52,7 @@ Xe-AntiShell-Central/
 │   ├── accounts_http.go          # Account/password administration APIs
 │   └── assets/                    # Korean fleet, policies, histories and dark/light themes
 │       ├── policy.js             # Sectioned policy editor, save bar, duplicate and deployment steps
+│       ├── service-inventory.js  # Agent listener tables and policy service picker
 │       ├── policy-services.js    # Row editors for per-service rule controls and file/TCP scopes
 │       ├── policy-diff.js        # Current-versus-deployed setting comparison for previews
 │       ├── policy-editor.css     # Policy workspace layout, mode cards and fleet table
@@ -88,6 +91,7 @@ Xe-AntiShell-Central/
 │   ├── plans/password-policy.md
 │   ├── plans/policy-and-agent-configuration.md
 │   ├── plans/application-policies.md
+│   ├── plans/listening-service-policy.md
 │   ├── plans/policy-console-redesign.md
 │   └── analysis/managed-v1-operations.md
 ├── third_party/licenses/          # Preserved upstream license texts

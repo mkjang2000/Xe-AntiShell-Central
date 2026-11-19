@@ -220,8 +220,11 @@
   };
   // services holds editor output: service_rule_controls only when non-empty and
   // service_observations only when the central scope replaces host YAML.
+  C.validPolicyService = value => typeof value === "string" && value.length > 8 && value.length <= 255 && /^[A-Za-z0-9_.@\\-]+\.service$/.test(value);
+  C.policyScopeLabel = scope => scope === "all_listening" ? "발견된 모든 서비스" : scope === "selected" ? "지정된 서비스" : "기존 실행 파일·서비스 기준";
   C.settingsFromValues = (values, draft = {}, services = {}) => ({
-    detection: {...services, enabled: Boolean(values.detectionEnabled), extended_process_rules: Boolean(values.extendedRules), ...(values.privilegeRules ? {privilege_rules:true,root_exec_alerts:values.rootExecAlerts||"suspicious"} : {}), web_executables: C.lines(values.webExecutables), web_services: C.lines(values.webServices), shells: C.lines(values.shells), allowed_pairs: C.lines(values.allowedPairs)},
+    ...(values.policyServiceScope ? {service_scope: values.policyServiceScope} : {}),
+    detection: {...services, enabled: Boolean(values.detectionEnabled), extended_process_rules: Boolean(values.extendedRules), ...(values.privilegeRules ? {privilege_rules:true,root_exec_alerts:values.rootExecAlerts||"suspicious"} : {}), web_executables: values.policyServiceScope ? [] : C.lines(values.webExecutables), web_services: values.policyServiceScope === "all_listening" ? [] : C.lines(values.webServices), shells: C.lines(values.shells), allowed_pairs: C.lines(values.allowedPairs)},
     response: {mode: values.responseMode, action: values.responseAction, risk_threshold: Number(values.riskThreshold), min_confidence: Number(values.minConfidence), required_capabilities: C.lines(values.requiredCapabilities)},
     uninstall_mode: values.uninstallMode,
     monitoring: {enabled: Boolean(values.monitoringEnabled), sample_interval_seconds: Number(values.sampleInterval), process_limit: Number(values.processLimit)},
@@ -242,10 +245,17 @@
     const hours = Math.round((Date.parse(p.expires_at) - Date.parse(p.issued_at)) / 3600000);
     const applications = C.array(p.applications);
     const bindings = applications.map(({service, policy_id, policy_version}) => ({service, policy_id, policy_version}));
-    return {...(bindings.length ? {application_bindings: bindings, applications: structuredClone(applications)} : {}), detection: structuredClone(p.detection || {}), response: structuredClone(p.response || {}), uninstall_mode: p.uninstall_mode, monitoring: structuredClone(p.monitoring || {}), integrity: structuredClone(source.integrity || {enabled: false, mode: "observe", require_tpm: false, paths: []}), validity_hours: Number.isFinite(hours) ? Math.max(1, Math.min(8760, hours)) : 24};
+    const detection = structuredClone(p.detection || {});
+    const units = C.array(detection.web_services);
+    const fixed = ["selected", "all_listening"].includes(source.service_scope) && !C.array(detection.web_executables).length && units.length && units.every(C.validPolicyService);
+    return {...(fixed ? {service_scope: "selected"} : {}), ...(bindings.length ? {application_bindings: bindings, applications: structuredClone(applications)} : {}), detection, response: structuredClone(p.response || {}), uninstall_mode: p.uninstall_mode, monitoring: structuredClone(p.monitoring || {}), integrity: structuredClone(source.integrity || {enabled: false, mode: "observe", require_tpm: false, paths: []}), validity_hours: Number.isFinite(hours) ? Math.max(1, Math.min(8760, hours)) : 24};
   };
   C.validateSettings = settings => {
     const d = settings.detection, r = settings.response, m = settings.monitoring, fail = C.sectionError;
+    const scope = settings.service_scope ?? "";
+    if (!["", "selected", "all_listening"].includes(scope)) throw fail("detection", "서비스 적용 범위를 확인하세요.");
+    if (scope === "selected" && (!d.web_services.length || d.web_services.length > 1024 || !d.web_services.every(C.validPolicyService) || new Set(d.web_services.map(name => name.toLowerCase())).size !== d.web_services.length || d.web_executables.length)) throw fail("detection", "지정된 서비스에는 중복 없는 시스템 유닛 이름을 입력하세요. 예: nginx.service");
+    if (scope === "all_listening" && (d.web_services.length || d.web_executables.length)) throw fail("detection", "발견된 모든 서비스의 범위는 배포 미리보기에서 정해집니다.");
     if (Object.hasOwn(d, "service_rule_controls")) {
       const controls = d.service_rule_controls;
       if (!Array.isArray(controls) || controls.length > 256) throw fail("services", "서비스별 규칙 설정은 256개까지 입력하세요.");
@@ -261,7 +271,7 @@
     }
     if (Object.hasOwn(d, "service_observations") && (!Array.isArray(d.service_observations) || d.service_observations.length > 64 || d.service_observations.some(scope => !scope || typeof scope.service !== "string" || !scope.service))) throw fail("services", "서비스 이름이 있는 범위를 최대 64개까지 입력하세요.");
     if (d.privilege_rules !== undefined && typeof d.privilege_rules !== "boolean" || d.root_exec_alerts !== undefined && typeof d.root_exec_alerts !== "string" || d.root_exec_alerts && (!d.privilege_rules || !["suspicious","all"].includes(d.root_exec_alerts))) throw fail("detection", "전역 root 실행 경보 범위를 확인하세요.");
-    if (d.enabled && !d.privilege_rules && (!d.shells.length || !d.web_executables.length && !d.web_services.length)) throw fail("detection", "탐지를 사용하려면 웹 실행 파일 또는 서비스, 탐지할 셸을 입력하세요.");
+    if (d.enabled && !d.privilege_rules && (!d.shells.length || scope !== "all_listening" && !d.web_executables.length && !d.web_services.length)) throw fail("detection", "탐지를 사용하려면 웹 실행 파일 또는 서비스, 탐지할 셸을 입력하세요.");
     if (r.mode !== "observe" && !d.enabled) throw fail("detection", "모의 대응·자동 종료에는 탐지 엔진이 켜져 있어야 합니다.");
     if (r.mode !== "observe" && (r.action !== "terminate" || !r.required_capabilities.length || r.risk_threshold <= 0 || r.min_confidence <= 0)) throw fail("response", "모의 대응·자동 종료는 종료 동작, 필수 기능 조건, 0보다 큰 위험 점수·신뢰도가 필요합니다.");
     if (settings.integrity.config_sha256 && (!settings.integrity.package_files || !/^[a-f0-9]{64}$/.test(settings.integrity.config_sha256))) throw fail("agent", "에이전트 파일 검사를 선택한 후 승인된 YAML의 소문자 SHA-256을 입력하세요.");

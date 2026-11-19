@@ -53,6 +53,7 @@ type ConsoleIntegrity struct {
 type ConsoleSettings struct {
 	ApplicationBindings []ApplicationBinding        `json:"application_bindings,omitempty"`
 	Applications        []managed.ApplicationPolicy `json:"applications,omitempty"`
+	ServiceScope        string                      `json:"service_scope,omitempty"`
 	Detection           managed.DetectionPolicy     `json:"detection"`
 	Response            managed.ResponsePolicy      `json:"response"`
 	UninstallMode       string                      `json:"uninstall_mode"`
@@ -102,16 +103,16 @@ func (settings ConsoleSettings) validate() error {
 		}
 		seen[path] = true
 	}
-	policy := settings.wirePolicy("validation", "validation", "validation", 1, time.Unix(1, 0).UTC())
-	if err := policy.Validate(); err != nil {
-		// The protocol reason names the rejected field for the operator.
-		return fmt.Errorf("%w: 탐지·대응·삭제 또는 모니터링 설정을 확인하세요 (%v)", ErrInvalid, err)
+	if err := settings.validateServiceScope(); err != nil {
+		return err
 	}
-	body, err := json.Marshal(policy)
-	if err != nil || len(body) > managed.MaxPolicyBytes-1024 {
-		return fmt.Errorf("%w: 정책 설정이 너무 큽니다", ErrInvalid)
+	// An inventory template is validated before individual hosts are chosen.
+	// Preview validates the concrete policy again with that host's names.
+	validation := settings.withListeningServices([]string{"validation.service"})
+	if err := validateConsoleWirePolicy(validation.wirePolicy("validation", "validation", "validation", 1, time.Unix(1, 0).UTC())); err != nil {
+		return err
 	}
-	if body, err = json.Marshal(settings); err != nil || len(body) > 128<<10 {
+	if body, err := json.Marshal(settings); err != nil || len(body) > 128<<10 {
 		return fmt.Errorf("%w: 무결성을 포함한 전체 설정은 128KiB 이하여야 합니다", ErrInvalid)
 	}
 	return nil

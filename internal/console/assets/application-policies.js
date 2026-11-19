@@ -4,7 +4,6 @@
   const id = name => C.id(name);
   const key = ref => JSON.stringify([ref.policy_id, ref.policy_version]);
   const same = (a, b) => a.service === b.service && a.policy_id === b.policy_id && a.policy_version === b.policy_version;
-  const validService = name => name.length > 8 && name.length <= 255 && /^[A-Za-z0-9_.@\\-]+\.service$/.test(name);
   const writable = () => ["admin", "operator"].includes(C.session?.role);
   const modes = {observe: ["탐지 전용", "blue"], would_block: ["모의 대응", "warning"], enforce: ["자동 종료", "danger"]};
   const profile = policy => {
@@ -101,7 +100,7 @@
     const name = id("appBindingService").value.trim(), select = id("appBindingSource");
     const source = sources().find(t => key({policy_id:t.id, policy_version:t.version}) === select.value);
     let message = "";
-    if (!validService(name)) message = "정확한 시스템 서비스 유닛 이름을 입력하세요. 예: nginx.service";
+    if (!C.validPolicyService(name)) message = "정확한 시스템 서비스 유닛 이름을 입력하세요. 예: nginx.service";
     else if (!source) message = "연결할 정책과 버전을 선택하세요.";
     else if (!editing && bindings.some(ref => ref.service === name)) message = "이미 연결된 서비스입니다. 해당 행의 변경을 선택하세요.";
     else if (!editing && bindings.length >= 64) message = "호스트 한 대에는 최대 64개 서비스를 연결할 수 있습니다.";

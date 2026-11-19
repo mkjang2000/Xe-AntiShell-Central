@@ -68,7 +68,7 @@ func allowsAPI(role Role, method, endpoint string) bool {
 			return true
 		}
 		parts = strings.Split(endpoint, "/")
-		return len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[3] != "" && (parts[4] == "policy" || parts[4] == "integrity")
+		return len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[3] != "" && (parts[4] == "policy" || parts[4] == "integrity" || parts[4] == "service-inventory")
 	}
 	if role != RoleOperator {
 		return false

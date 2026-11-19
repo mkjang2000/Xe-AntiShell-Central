@@ -125,7 +125,8 @@
     const policy = fleet.policy.policy;
     if (!policy) { container.append(C.el("p", "inline-note", "중앙에서 지정한 정책이 없습니다. 에이전트는 로컬 설정을 사용할 수 있습니다.")); return; }
     const modes = {observe:"탐지 전용",would_block:"모의 대응",enforce:"자동 종료"}, detection = C.object(policy.detection);
-    container.append(C.facts([["정책 / 리비전", `${policy.policy_id} / ${policy.revision}`], ["대응 방식", modes[C.object(policy.response).mode] || "미확인"], ["서비스별 파일·TCP 범위", C.serviceScopeSummary(detection)], ["웹 서비스", C.array(detection.web_services).join(" · ") || "명시 서비스 없음"], ["웹 실행 파일", C.array(detection.web_executables).join(" · ") || "명시 실행 파일 없음"], ["탐지 셸", C.array(detection.shells).join(" · ") || "없음"],["전역 root·권한 변경",detection.privilege_rules?`사용 · ${detection.root_exec_alerts==="all"?"모든 root 실행 경보":"의심 문맥만 경보"} · 탐지 전용`:"사용 안 함"], ["정책 만료", C.time(policy.expires_at)]]));
+    const selectedScope = fleet.policy.desired_settings?.service_scope;
+    container.append(C.facts([["정책 / 리비전", `${policy.policy_id} / ${policy.revision}`], ["대응 방식", modes[C.object(policy.response).mode] || "미확인"], ["서비스별 파일·TCP 범위", C.serviceScopeSummary(detection)], ...(selectedScope ? [["웹 출처 범위", C.policyScopeLabel(selectedScope)]] : []), ["웹 서비스", C.array(detection.web_services).join(" · ") || "명시 서비스 없음"], ["웹 실행 파일", C.array(detection.web_executables).join(" · ") || "명시 실행 파일 없음"], ["탐지 셸", C.array(detection.shells).join(" · ") || "없음"],["전역 root·권한 변경",detection.privilege_rules?`사용 · ${detection.root_exec_alerts==="all"?"모든 root 실행 경보":"의심 문맥만 경보"} · 탐지 전용`:"사용 안 함"], ["정책 만료", C.time(policy.expires_at)]]));
     if (C.agentApplicationPolicies) container.append(C.agentApplicationPolicies(agent, fleet.policy));
     if (C.array(fleet.policy.pending_features).includes("integrity")) container.append(C.el("p", "notice warning", "추가 무결성 설정(TPM·임의 경로·강제 검증)은 중앙 초안에 보관합니다."));
     container.append(C.button("이 서버 정책으로 새 정책 작성", () => C.editTemplateFromPolicy(policy, fleet.policy.desired_settings), "primary small"));
@@ -170,6 +171,8 @@
     actions.append(C.button("이 서버 이력 조회", () => { C.id("historyAgent").value = agent.agent_id; root.location.hash = "history"; C.loadHistory(true); }, "small"));
     if (!agent.revoked) actions.append(C.button("제거 승인으로 이동", () => { C.id("removalAgent").value = agent.agent_id; C.populateRemoval(); root.location.hash = "approvals"; }, "small"));
     content.append(actions);
+    const inventory = C.agentServiceInventory?.(agent);
+    if (inventory) content.append(inventory);
     assignedPolicy(agent, content); hostBoundary(agent, content); C.fileIntegrity(agent, content); resourceDetails(agent, content); capabilities(agent, content);
     content.append(C.raw(hb, "하트비트 보고 원문 보기"));
     C.id("agentDetailBody").replaceChildren(content);

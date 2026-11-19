@@ -19,6 +19,7 @@
     ["탐지 엔진", s => onoff(s.detection.enabled)],
     ["확장 실행 규칙", s => onoff(s.detection.extended_process_rules)],
     ["전역 root·권한 변경 탐지", s => s.detection.privilege_rules ? (s.detection.root_exec_alerts === "all" ? "사용 · 모든 root 실행 경보" : "사용 · 의심 문맥만 경보") : "사용 안 함"],
+    ["웹 출처 범위", s => C.policyScopeLabel(s.service_scope)],
     ["웹 실행 파일", s => list(s.detection.web_executables), true],
     ["웹 서비스", s => list(s.detection.web_services), true],
     ["탐지 셸", s => list(s.detection.shells), true],
@@ -82,7 +83,9 @@
       } else {
         if (group.policy_id && group.policy_id !== template.id) box.append(C.el("p", "notice warning", `현재 정책 '${group.policy_id}'을(를) '${template.id}'(으)로 교체합니다.`));
         const rows = C.policyDiff(group.settings, template.settings);
-        if (!rows.length) box.append(C.el("p", "field-note", "설정 변경이 없습니다. 같은 설정으로 정책 리비전과 유효 기간만 갱신합니다."));
+        if (!rows.length) box.append(C.el("p", "field-note", template.settings.service_scope === "all_listening"
+          ? "저장된 설정은 같습니다. 이번 배포의 실제 범위는 대상별 웹 서비스에서 확인하세요."
+          : "설정 변경이 없습니다. 같은 설정으로 정책 리비전과 유효 기간만 갱신합니다."));
         else {
           const wrap = C.el("div", "table-scroll");
           const table = C.table("현재 정책 대비 변경 사항", ["항목", "현재", "변경 후"], rows.map(row => [row.label, row.before, row.after]));

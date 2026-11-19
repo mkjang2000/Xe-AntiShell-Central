@@ -161,6 +161,9 @@ func (s *Server) createTrial(ctx context.Context, tx *sql.Tx, before consolePrev
 	if !sameConsoleSnapshot(before, snap) {
 		return t, ErrConflict
 	}
+	if tpl.Settings.ServiceScope == serviceScopeAllListening {
+		return t, fmt.Errorf("%w: 발견된 모든 서비스 모드는 일반 배포의 대상과 서비스 미리보기를 사용하세요", ErrInvalid)
+	}
 	if len(tpl.Settings.Applications) != 0 {
 		return t, errApplicationComparison
 	}

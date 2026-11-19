@@ -32,11 +32,14 @@ type consolePreviewRequest struct {
 }
 
 type consoleDeployTarget struct {
-	AgentID         string   `json:"agent_id"`
-	EnrollmentID    string   `json:"enrollment_id"`
-	CurrentRevision uint64   `json:"current_revision"`
-	NextRevision    uint64   `json:"next_revision"`
-	Warnings        []string `json:"warnings"`
+	AgentID          string   `json:"agent_id"`
+	EnrollmentID     string   `json:"enrollment_id"`
+	CurrentRevision  uint64   `json:"current_revision"`
+	NextRevision     uint64   `json:"next_revision"`
+	Warnings         []string `json:"warnings"`
+	ServiceScopeHash string   `json:"service_scope_hash,omitempty"`
+
+	listeningServices []string
 }
 
 type consolePreviewGroup struct {
@@ -122,11 +125,13 @@ func consoleSnapshot(ctx context.Context, tx *sql.Tx, request consolePreviewRequ
 	}
 	sort.Strings(ids)
 	var unsupported []string
+	allListening := template.Settings.ServiceScope == serviceScopeAllListening
 	for _, id := range ids {
 		var target consoleDeployTarget
 		var heartbeat []byte
+		var seenNS int64
 		target.AgentID = id
-		err = tx.QueryRowContext(ctx, "SELECT enrollment_id,desired_policy_revision,heartbeat_json FROM agents WHERE agent_id=? AND revoked=0", id).Scan(&target.EnrollmentID, &target.CurrentRevision, &heartbeat)
+		err = tx.QueryRowContext(ctx, "SELECT enrollment_id,desired_policy_revision,heartbeat_json,last_seen_at_ns FROM agents WHERE agent_id=? AND revoked=0", id).Scan(&target.EnrollmentID, &target.CurrentRevision, &heartbeat, &seenNS)
 		if errors.Is(err, sql.ErrNoRows) {
 			return snapshot, template, ErrNotFound
 		}
@@ -139,8 +144,26 @@ func consoleSnapshot(ctx context.Context, tx *sql.Tx, request consolePreviewRequ
 		var report managed.Heartbeat
 		settings := template.Settings
 		checkSupport := requiresDetectionSupport(settings.Detection, settings.Applications)
-		if checkSupport || settings.Response.Mode != "observe" {
+		if allListening || checkSupport || settings.Response.Mode != "observe" {
 			report = decodePolicyHeartbeat(heartbeat)
+		}
+		target.NextRevision = target.CurrentRevision + 1
+		if allListening {
+			inventory := serviceInventoryFromHeartbeat(report, id, target.EnrollmentID, time.Unix(0, seenNS).UTC(), now)
+			target.listeningServices, err = inventory.deploymentServices()
+			if err != nil {
+				unsupported = append(unsupported, id+" · "+strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": "))
+				continue
+			}
+			target.ServiceScopeHash, err = consoleHash(target.listeningServices)
+			if err != nil {
+				return snapshot, template, err
+			}
+			settings = settings.withListeningServices(target.listeningServices)
+			if err = validateConsoleWirePolicy(settings.wirePolicy(template.ID, id, target.EnrollmentID, target.NextRevision, now)); err != nil {
+				unsupported = append(unsupported, id+" · "+strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": "))
+				continue
+			}
 		}
 		if checkSupport {
 			if err = checkDetectionSupport(settings.Detection, settings.Applications, report, target.AgentID, target.EnrollmentID, now); err != nil {
@@ -148,7 +171,6 @@ func consoleSnapshot(ctx context.Context, tx *sql.Tx, request consolePreviewRequ
 				continue
 			}
 		}
-		target.NextRevision = target.CurrentRevision + 1
 		target.Warnings = warningsForApplications(settings, report, now)
 		snapshot.Targets = append(snapshot.Targets, target)
 	}
@@ -375,7 +397,11 @@ func (s *Server) consolePreview(w http.ResponseWriter, r *http.Request) {
 		s.consoleError(w, "preview signing", err)
 		return
 	}
-	respond(w, http.StatusOK, map[string]any{"preview_token": token, "template": template, "targets": snapshot.Targets, "current_policies": current, "pending_features": consolePending(template.Settings)})
+	response := map[string]any{"preview_token": token, "template": template, "targets": snapshot.Targets, "current_policies": current, "pending_features": consolePending(template.Settings)}
+	if template.Settings.ServiceScope == serviceScopeAllListening {
+		response["service_targets"] = consoleServiceTargetGroups(snapshot.Targets)
+	}
+	respond(w, http.StatusOK, response)
 }
 
 func sameConsoleSnapshot(before, after consolePreviewToken) bool {
@@ -389,7 +415,8 @@ func sameConsoleSnapshot(before, after consolePreviewToken) bool {
 	}
 	for index, target := range before.Targets {
 		current := after.Targets[index]
-		if target.AgentID != current.AgentID || target.EnrollmentID != current.EnrollmentID || target.CurrentRevision != current.CurrentRevision || target.NextRevision != current.NextRevision {
+		if target.AgentID != current.AgentID || target.EnrollmentID != current.EnrollmentID || target.CurrentRevision != current.CurrentRevision || target.NextRevision != current.NextRevision ||
+			target.ServiceScopeHash != current.ServiceScopeHash {
 			return false
 		}
 	}
@@ -429,13 +456,16 @@ func (s *Server) consoleDeploy(w http.ResponseWriter, r *http.Request) {
 		s.consoleError(w, "deployment snapshot", err)
 		return
 	}
+	settings, err := json.Marshal(template.Settings)
+	if err != nil {
+		_ = tx.Rollback()
+		s.consoleError(w, "deployment settings", err)
+		return
+	}
 	for _, target := range after.Targets {
-		policy := template.Settings.wirePolicy(template.ID, target.AgentID, target.EnrollmentID, target.NextRevision, now)
-		var settings []byte
-		settings, err = json.Marshal(template.Settings)
-		if err == nil {
-			err = s.issueConsolePolicy(r.Context(), tx, policy, target.CurrentRevision, settings, now, map[string]any{"revision": target.NextRevision, "policy_id": policy.ID, "enrollment_id": target.EnrollmentID, "template_version": template.Version, "pending_features": consolePending(template.Settings)})
-		}
+		effective := template.Settings.withListeningServices(target.listeningServices)
+		policy := effective.wirePolicy(template.ID, target.AgentID, target.EnrollmentID, target.NextRevision, now)
+		err = s.issueConsolePolicy(r.Context(), tx, policy, target.CurrentRevision, settings, now, map[string]any{"revision": target.NextRevision, "policy_id": policy.ID, "enrollment_id": target.EnrollmentID, "template_version": template.Version, "pending_features": consolePending(template.Settings)})
 		if err != nil {
 			_ = tx.Rollback()
 			s.consoleError(w, "deployment assignment", err)
@@ -450,5 +480,9 @@ func (s *Server) consoleDeploy(w http.ResponseWriter, r *http.Request) {
 		s.consoleError(w, "deployment commit", err)
 		return
 	}
-	respond(w, http.StatusOK, map[string]any{"targets": after.Targets, "pending_features": consolePending(template.Settings), "deployed_at": now})
+	response := map[string]any{"targets": after.Targets, "pending_features": consolePending(template.Settings), "deployed_at": now}
+	if template.Settings.ServiceScope == serviceScopeAllListening {
+		response["service_targets"] = consoleServiceTargetGroups(after.Targets)
+	}
+	respond(w, http.StatusOK, response)
 }

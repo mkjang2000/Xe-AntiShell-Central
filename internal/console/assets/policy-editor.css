@@ -67,6 +67,14 @@ html { scroll-padding-bottom: 76px; }
 .scope-fields textarea { font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
 #serviceScopeEditor[hidden] { display: none; }
 #serviceScopeEmpty { margin: 8px 0; }
+#webExecutablesField[hidden], #webServicesField[hidden] { display: none; }
+.inventory-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 10px 0; }
+.inventory-toolbar .field { flex: 1 1 16rem; min-width: 0; margin-bottom: 0; }
+.service-inventory-result .section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.service-inventory-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin: 8px 0; color: var(--muted); font-size: 12px; }
+.service-inventory-table td:first-child, .inventory-targets p { overflow-wrap: anywhere; }
+.inventory-targets summary { cursor: pointer; font-weight: 600; }
+.service-target-names { margin: 8px 0 0; font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; }
 
 /* Save bar: sticky at the bottom of the editor. html scroll-padding keeps
    keyboard focus clear of it so the capability checkboxes stay visible. */

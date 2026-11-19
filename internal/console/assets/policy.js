@@ -3,7 +3,7 @@
 (function (C) {
   const P = {initialized: false, dirty: false, preview: null, selectionRevision: 0, integrityDraft: {}, section: "basics", observeAction: "none", saved: null, dirtySections: new Set()};
   const sections = ["basics", "detection", "response", "services", "agent", "usage"];
-  const fields = ["detectionEnabled","extendedRules","privilegeRules","rootExecAlerts","webExecutables","webServices","shells","allowedPairs","responseMode","riskThreshold","minConfidence","requiredCapabilities","monitoringEnabled","sampleInterval","processLimit","uninstallMode","validityHours","integrityPackageFiles","integrityConfigSHA"];
+  const fields = ["detectionEnabled","extendedRules","privilegeRules","rootExecAlerts","policyServiceScope","webExecutables","webServices","shells","allowedPairs","responseMode","riskThreshold","minConfidence","requiredCapabilities","monitoringEnabled","sampleInterval","processLimit","uninstallMode","validityHours","integrityPackageFiles","integrityConfigSHA"];
   const modes = {observe: "탐지 전용", would_block: "모의 대응", enforce: "자동 종료"};
   const setValue = (id, value) => { const field = C.id(id); if (field.type === "checkbox") field.checked = Boolean(value); else field.value = value ?? ""; };
   const listValue = value => C.array(value).join("\n");
@@ -124,6 +124,13 @@
   // Dependent visibility and warnings that follow the current form values.
   const updateForm = () => {
     const mode = C.id("responseMode").value, observe = mode === "observe";
+    const scope = C.id("policyServiceScope").value;
+    C.id("webExecutablesField").hidden = scope !== "";
+    C.id("webServicesField").hidden = scope === "all_listening";
+    C.text("policyServiceScopeNote", scope === "all_listening"
+      ? "배포할 때 각 에이전트의 최근 ‘전체 수집’ 보고에서 확인된 systemd 유닛을 확정합니다. 새로 발견한 서비스는 다음 배포 때 포함됩니다."
+      : scope === "selected" ? "지정한 systemd 유닛 이름만 웹 출처 기준으로 사용합니다."
+      : "입력한 웹 실행 파일과 서비스 이름을 웹 출처 기준으로 사용합니다.");
     syncModeRadios();
     C.id("responseConditions").hidden = observe;
     C.id("responseConditionsOff").hidden = !observe;
@@ -142,12 +149,14 @@
 
   const overviewFacts = () => {
     const detection = C.id("detectionEnabled").checked, mode = C.id("responseMode").value;
+    const scope = C.id("policyServiceScope").value;
     const executables = C.lines(C.id("webExecutables").value).length, services = C.lines(C.id("webServices").value).length;
+    const scopeText = scope === "all_listening" ? C.policyScopeLabel(scope) : scope === "selected" ? `지정된 서비스 ${services}개` : `웹 실행 파일 ${executables}개 · 웹 서비스 ${services}개`;
     const counts = C.policyServices?.counts?.() || {controls: 0, scopes: null};
     const bindings = C.applicationBindings?.count?.() ?? 0;
     const extras = [C.id("extendedRules").checked && "확장 실행 규칙", C.id("privilegeRules").checked && "전역 root·권한 변경"].filter(Boolean);
     const facts = [
-      ["탐지", detection ? `사용 · 웹 실행 파일 ${executables}개 · 웹 서비스 ${services}개${extras.length ? ` · ${extras.join(" · ")}` : ""}` : "탐지 엔진 꺼짐"],
+      ["탐지", detection ? `사용 · ${scopeText}${extras.length ? ` · ${extras.join(" · ")}` : ""}` : "탐지 엔진 꺼짐"],
       ["대응", C.tag(modes[mode] || "미확인", mode === "enforce" ? "danger" : mode === "would_block" ? "warning" : "blue")],
       ["서비스별 설정", `정책 연결 ${bindings}개 · 규칙 설정 ${counts.controls}개 · 파일·TCP 범위 ${counts.scopes === null ? "호스트 YAML" : `중앙 ${counts.scopes}개`}`],
       ["에이전트", `${C.id("monitoringEnabled").checked ? `자원 보고 ${C.id("sampleInterval").value}초` : "자원 보고 꺼짐"} · 유효 기간 ${C.id("validityHours").value}시간${C.id("integrityPackageFiles").checked ? " · 파일 무결성 측정" : ""}`]
@@ -181,12 +190,13 @@
       ["검증 방식", i.mode === "enforce" ? "강제 (초안)" : "관찰 (초안)"], ["검증 경로", C.array(i.paths).join("\n") || "미지정"]
     ])] : []));
     P.observeAction = (r.mode || "observe") === "observe" ? r.action || "none" : "none";
-    const values = {detectionEnabled:d.enabled,extendedRules:d.extended_process_rules,privilegeRules:d.privilege_rules,rootExecAlerts:d.root_exec_alerts||"suspicious",webExecutables:listValue(d.web_executables),webServices:listValue(d.web_services),shells:listValue(d.shells),allowedPairs:listValue(d.allowed_pairs),responseMode:r.mode||"observe",riskThreshold:r.risk_threshold,minConfidence:r.min_confidence,requiredCapabilities:listValue(r.required_capabilities),monitoringEnabled:m.enabled,sampleInterval:m.sample_interval_seconds,processLimit:m.process_limit,uninstallMode:settings.uninstall_mode,validityHours:settings.validity_hours,integrityPackageFiles:i.package_files,integrityConfigSHA:i.config_sha256};
+    const values = {detectionEnabled:d.enabled,extendedRules:d.extended_process_rules,privilegeRules:d.privilege_rules,rootExecAlerts:d.root_exec_alerts||"suspicious",policyServiceScope:settings.service_scope || "",webExecutables:listValue(d.web_executables),webServices:listValue(d.web_services),shells:listValue(d.shells),allowedPairs:listValue(d.allowed_pairs),responseMode:r.mode||"observe",riskThreshold:r.risk_threshold,minConfidence:r.min_confidence,requiredCapabilities:listValue(r.required_capabilities),monitoringEnabled:m.enabled,sampleInterval:m.sample_interval_seconds,processLimit:m.process_limit,uninstallMode:settings.uninstall_mode,validityHours:settings.validity_hours,integrityPackageFiles:i.package_files,integrityConfigSHA:i.config_sha256};
     for (const id of fields) setValue(id, values[id]);
     C.policyServices?.load(d);
     fillCapabilityEditor();
     C.applicationBindings?.load(settings);
     updateForm();
+    C.policyInventory?.render();
   };
   const renderHeader = () => {
     const saved = P.saved, version = Number(C.id("templateVersionInput").value);
@@ -330,6 +340,7 @@
     if (!template) { out.replaceChildren(); return; }
     const settings = C.object(template.settings), usage = deployments(template.id), tags = C.el("div", "policy-summary");
     tags.append(C.appPolicyTag ? C.appPolicyTag(settings) : C.tag(modes[C.object(settings.response).mode] || "미확인"), C.tag(`버전 ${template.version}`, "neutral"));
+    if (settings.service_scope) tags.append(C.tag(C.policyScopeLabel(settings.service_scope), "neutral"));
     if (C.array(settings.application_bindings).length) tags.append(C.tag(`서비스 연결 ${C.array(settings.application_bindings).length}개`, "neutral"));
     tags.append(C.tag(usage.total ? `현재 ${usage.total}대에 지정` : "아직 배포 안 됨", "neutral"));
     const edit = C.button("편집", () => { const target = C.state.templates.find(t => t.id === template.id); C.showPolicyPane?.("Catalog"); if (P.saved?.id !== template.id) canDiscard().then(ok => { if (ok) fillTemplate(target); }); }, "small quiet");
@@ -374,11 +385,14 @@
     C.startDeployment({templateID: P.saved.id});
   };
   const showPreview = (preview, template) => {
+    const targets = C.array(preview.targets);
+    const settings = C.object(template.settings), response = C.object(settings.response), detection = C.object(settings.detection);
+    // Validate exact coverage before assigning the token or enabling confirmation.
+    const allListening = settings.service_scope === "all_listening";
+    const resolvedServices = allListening ? C.serviceTargetPreview(preview.service_targets, targets) : null;
     P.preview = preview; C.id("deploymentPreview").hidden = false;
     C.id("deployConfirm").checked = false; C.id("deployButton").disabled = true;
-    const targets = C.array(preview.targets);
     C.text("previewTargetCount", `${targets.length}대`);
-    const settings = C.object(template.settings), response = C.object(settings.response), detection = C.object(settings.detection);
     const onlyDetection = response.mode !== "observe" && detection.extended_process_rules;
     const responseSummary = onlyDetection ? "대응 대상 규칙 0개" : modes[response.mode];
     const notes = [C.el("p", "notice warning", `전체 정책 교체: '${template.name}' v${template.version} · ${responseSummary}. 기존 서버의 서비스·탐지 예외 목록은 자동으로 합쳐지지 않습니다.`)];
@@ -388,10 +402,11 @@
     if (C.array(preview.pending_features).includes("integrity")) notes.push(C.el("p", "notice warning", "추가 무결성 설정(TPM·임의 경로·강제 검증)은 향후 적용을 위해 중앙 초안으로 보관합니다."));
     const apps = C.array(settings.applications);
     if (apps.length && C.appProjectionTable) notes.push(C.el("p", "panel-note", "이번에 발행할 전체 서비스 연결입니다. 목록에서 빠진 기존 서비스는 호스트 기본 정책을 사용합니다."), C.appProjectionTable(apps, "이 배포에 포함되는 서비스별 정책"));
+    if (resolvedServices) notes.push(resolvedServices);
     const full = C.el("details","technical"), monitoring = C.object(settings.monitoring), integrity = C.object(settings.integrity);
     full.append(C.el("summary","","배포할 정책 전체 설정"),C.facts([
       ["탐지 / 확장 규칙",`${detection.enabled?"사용":"사용 안 함"} / ${detection.extended_process_rules?"사용":"사용 안 함"}`],
-      ["웹 서비스 대상",`${C.array(detection.web_services).length}개 · ${C.array(detection.web_services).join(" · ") || "명시 서비스 없음"}`],
+      ["웹 서비스 대상",allListening ? "발견된 모든 서비스 · 대상별 웹 서비스 확인" : `${C.policyScopeLabel(settings.service_scope)} · ${C.array(detection.web_services).length}개 · ${C.array(detection.web_services).join(" · ") || "명시 서비스 없음"}`],
       ["웹 실행 파일",C.array(detection.web_executables).join(" · ") || "명시 실행 파일 없음"],
       ["서비스별 파일·TCP 범위", C.serviceScopeSummary(detection)],
       ["서비스별 규칙", C.array(detection.service_rule_controls).map(c => [c.service,c.rule_id,c.mode,c.reason,c.expires_at].filter(Boolean).join(" · ")).join("\n") || "프로필 기본값"],
@@ -413,7 +428,8 @@
       return [target.agent_id, `${target.current_revision} → ${target.next_revision}`, target.enrollment_id, warnings.length ? list : "—"];
     });
     C.id("previewTargets").replaceChildren(C.table("배포 대상과 정책 리비전 변경", ["에이전트", "현재 → 다음 리비전", "현재 등록 ID", "확인 사항"], rows));
-    if (apps.length) C.id("trialStart").replaceChildren(C.el("p", "panel-note", "서비스 정책은 호스트 한 대에 먼저 배포해 적용 리비전과 서비스 귀속을 확인할 수 있습니다. 오프라인 표본 비교는 서비스별 정책을 지원하지 않습니다."));
+    if (allListening) C.id("trialStart").replaceChildren(C.el("p", "panel-note", "발견 범위는 일반 배포에서 서버 한 대를 먼저 선택해 확인할 수 있습니다."));
+    else if (apps.length) C.id("trialStart").replaceChildren(C.el("p", "panel-note", "서비스 정책은 호스트 한 대에 먼저 배포해 적용 리비전과 서비스 귀속을 확인할 수 있습니다. 오프라인 표본 비교는 서비스별 정책을 지원하지 않습니다."));
     else C.policyTrialStart?.(preview);
     C.id("deploymentPreview").scrollIntoView({behavior:"instant",block:"nearest"});
   };
@@ -457,6 +473,7 @@
     initCapabilityEditor();
     C.applicationBindings?.init(() => changed("services"));
     C.policyServices?.init(() => changed("services"));
+    C.policyInventory?.init(() => changed("detection"));
     C.initAppliedPolicies?.();
     C.initPolicyUsage?.();
     for (const key of sections) C.id(`policySectionTab-${key}`).addEventListener("click", () => showSection(key));
@@ -466,10 +483,13 @@
     C.id("newTemplate").addEventListener("click", async () => { if (await canDiscard()) { fillTemplate(null); C.id("templateID").focus(); } });
     C.id("templateForm").addEventListener("submit",saveTemplate);
     C.id("templateForm").addEventListener("input",event => {
+      if (["policyServiceScope", "policyInventoryAgent"].includes(event?.target?.id)) return;
       const section = event?.target?.closest?.(".policy-section")?.id?.replace("policySection-", "");
       changed(sections.includes(section) ? section : undefined);
       if (event?.target?.id === "templateName" && !P.saved) renderHeader();
     });
+    C.id("policyServiceScope").addEventListener("change", () => { changed("detection"); C.policyInventory?.render(); C.policyServices?.refreshNameHints(); });
+    C.id("webServices").addEventListener("input", () => C.policyInventory?.render());
     C.id("deleteTemplate").addEventListener("click",deleteTemplate);
     C.id("duplicateTemplate").addEventListener("click",duplicateTemplate);
     C.id("revertTemplate").addEventListener("click",revertTemplate);
@@ -486,6 +506,7 @@
     C.onState(() => {
       if (!P.initialized) { P.initialized = true; fillTemplate(C.state.templates[0] || null); }
       renderLists(); renderHeader(); renderOverview(); C.applicationBindings?.render();
+      C.policyInventory?.syncAgents();
     });
     C.hasUnsavedPolicy = () => P.dirty;
   };

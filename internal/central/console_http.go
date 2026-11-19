@@ -24,6 +24,7 @@ func (s *Server) ConsoleHandler() http.Handler {
 	}
 	mux.HandleFunc("GET /api/agents/{id}/integrity", s.consoleFileIntegrity)
 	mux.HandleFunc("GET /api/agents/{id}/policy", s.consoleAgentPolicy)
+	mux.HandleFunc("GET /api/agents/{id}/service-inventory", s.consoleAgentServiceInventory)
 	mux.HandleFunc("GET /api/history", s.consoleHistory)
 	mux.HandleFunc("GET /api/finding-reviews", s.consoleFindingReviews)
 	mux.HandleFunc("POST /api/finding-reviews", s.consoleFindingReviews)
