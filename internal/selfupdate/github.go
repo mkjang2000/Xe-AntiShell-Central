@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -121,6 +122,9 @@ func listReleases(ctx context.Context, client *http.Client, major string) ([]Rel
 			out = append(out, r)
 		}
 	}
+	slices.SortFunc(out, func(a, b Release) int {
+		return githubrelease.ComparePackageTags(b.Tag, a.Tag)
+	})
 	return out, nil
 }
 

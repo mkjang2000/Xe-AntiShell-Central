@@ -1,12 +1,15 @@
 package central
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
@@ -38,7 +41,7 @@ func loadUpdateRelease(ctx context.Context, q updateReader, id string) (ConsoleU
 }
 
 func listUpdateReleases(ctx context.Context, q updateReader) ([]ConsoleUpdateRelease, error) {
-	rows, err := q.QueryContext(ctx, "SELECT metadata_json,uploaded_by FROM update_releases WHERE deleted=0 ORDER BY id")
+	rows, err := q.QueryContext(ctx, "SELECT metadata_json,uploaded_by FROM update_releases WHERE deleted=0")
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +58,35 @@ func listUpdateReleases(ctx context.Context, q updateReader) ([]ConsoleUpdateRel
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	slices.SortFunc(items, compareUpdateCatalogReleases)
+	return items, nil
+}
+
+func compareUpdateCatalogReleases(a, b ConsoleUpdateRelease) int {
+	// Group builds of the same release before ordering by their target platform.
+	return cmp.Or(
+		compareUpdatePackage(catalogVersion(b), catalogVersion(a)),
+		compareRPMComponent(a.OSMajor, b.OSMajor),
+		strings.Compare(a.Package.Arch, b.Package.Arch),
+		compareUpdatePackage(b.Package, a.Package),
+		b.CreatedAt.Compare(a.CreatedAt),
+		strings.Compare(a.ID, b.ID),
+	)
+}
+
+func catalogVersion(item ConsoleUpdateRelease) managed.RPMPackage {
+	pkg := item.Package
+	platform := ".el" + item.OSMajor
+	if i := strings.LastIndex(pkg.Release, platform); i >= 0 {
+		suffix := pkg.Release[i+len(platform):]
+		if suffix == "" || suffix[0] == '.' || suffix[0] == '_' {
+			pkg.Release = pkg.Release[:i]
+		}
+	}
+	return pkg
 }
 
 func (s *Server) publishUpdateRelease(ctx context.Context, body io.Reader, actor string, publisher managed.SignedReleaseManifest) (ConsoleUpdateRelease, bool, error) {

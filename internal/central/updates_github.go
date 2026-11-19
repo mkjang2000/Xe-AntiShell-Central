@@ -1,14 +1,18 @@
 package central
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/mkjang2000/Xe-AntiShell-Central/internal/githubrelease"
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 )
 
@@ -70,9 +74,15 @@ func (c *updateGitHubClient) catalog(ctx context.Context) (updateGitHubCatalog, 
 			}
 		}
 		if len(item.ManifestAssets) > 0 {
+			slices.SortFunc(item.ManifestAssets, func(a, b updateGitHubAsset) int {
+				return cmp.Or(compareRPMComponent(a.Name, b.Name), strings.Compare(a.Name, b.Name), cmp.Compare(a.Size, b.Size))
+			})
 			catalog.Items = append(catalog.Items, item)
 		}
 	}
+	slices.SortFunc(catalog.Items, func(a, b updateGitHubItem) int {
+		return cmp.Or(githubrelease.ComparePackageTags(b.Tag, a.Tag), b.PublishedAt.Compare(a.PublishedAt), strings.Compare(a.Tag, b.Tag))
+	})
 	c.cached = catalog
 	return catalog, nil
 }

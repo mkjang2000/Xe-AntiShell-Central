@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +57,46 @@ func TestUpdateGitHubCatalogIsFixedFilteredAndCached(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatal("catalog cache was bypassed")
+	}
+}
+
+func TestUpdateGitHubCatalogSortsPackageTagsAndAssets(t *testing.T) {
+	client := newUpdateGitHubClient()
+	assets := []updateGitHubAsset{
+		{Name: "xe-antishell-0.1.0-10.el10.x86_64.rpm.manifest.json", Size: 512},
+		{Name: "xe-antishell-0.1.0-10.el9.x86_64.rpm.manifest.json", Size: 512},
+	}
+	earlier := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+	later := earlier.Add(24 * time.Hour)
+	releases := []updateGitHubRelease{
+		{TagName: "v0.1.0-r9", PublishedAt: later, Assets: assets},
+		{TagName: "archive/z", PublishedAt: earlier, Assets: assets},
+		{TagName: "v0.10.0-r1", PublishedAt: earlier, Assets: assets},
+		{TagName: "archive/y", PublishedAt: earlier, Assets: assets},
+		{TagName: "v0.1.0-r10", PublishedAt: earlier, Assets: assets},
+		{TagName: "archive/a", PublishedAt: later, Assets: assets},
+	}
+	body, err := json.Marshal(releases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.http.Transport = updateRoundTrip(func(*http.Request) (*http.Response, error) {
+		return updateHTTPResponse(body), nil
+	})
+	catalog, err := client.catalog(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, 0, len(catalog.Items))
+	for _, item := range catalog.Items {
+		got = append(got, item.Tag)
+		if !slices.Equal(item.ManifestAssets, []updateGitHubAsset{assets[1], assets[0]}) {
+			t.Fatalf("manifest order for %q: %v", item.Tag, item.ManifestAssets)
+		}
+	}
+	want := []string{"v0.10.0-r1", "v0.1.0-r10", "v0.1.0-r9", "archive/a", "archive/y", "archive/z"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("tag order %v, want %v", got, want)
 	}
 }
 

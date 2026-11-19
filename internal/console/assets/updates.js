@@ -40,7 +40,7 @@
   const renderReleases=()=>{
     const search=C.id("updateReleaseSearch").value.trim().toLowerCase();
     const values=state.releases.filter(value=>`${releaseLabel(value)} ${value.sha256}`.toLowerCase().includes(search));
-    C.text("updateReleaseCount",`${values.length} / ${state.releases.length}개`);
+    C.text("updateReleaseCount",`${values.length} / ${state.releases.length}개 · 최신 버전순`);
     const rows=values.map(value=>{const action=el("div","update-actions");action.append(button("상세","",event=>showRelease(value,event?.currentTarget),"mini-button"));const deploy=button("배포 준비","",event=>prepare(value,event?.currentTarget),"mini-button");deploy.disabled=!operator()||value.publisher_verified!==true;action.append(deploy);const hash=el("code","update-hash",String(value.sha256||"").slice(0,12));return [C.rpmLabel(value.package),`EL ${C.value(value.os_major)}`,C.object(value.package).arch,C.bytes(value.size),value.publisher_verified===true?C.tag("발행자 서명 확인","good"):C.tag("서명 확인 안 됨","warning"),hash,C.time(value.created_at),action];});
     C.id("updateReleaseRows").replaceChildren(table("등록 릴리즈",["RPM 버전·릴리즈","대상 OS","아키텍처","크기","발행자 서명","SHA256 앞 12자","등록 시각","작업"],rows));
   };

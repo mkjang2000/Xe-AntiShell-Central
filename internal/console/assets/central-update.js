@@ -11,14 +11,16 @@
   };
   const available = new Set(["idle","succeeded","failed","interrupted"]);
   const admin = () => C.session?.role === "admin";
+  const compareVersions = (target, current) => {
+    for (let i = 1; i <= 4; i++) {
+      const order = Number(target[i]) - Number(current[i]);
+      if (order !== 0) return order;
+    }
+    return 0;
+  };
   const readyTag = (tag, installed) => {
     const target = tagPattern.exec(tag), current = rpmPattern.exec(installed);
-    if (!current || !target) return false;
-    for (let i = 1; i <= 4; i++) {
-      const a = Number(target[i]), b = Number(current[i]);
-      if (a !== b) return a > b;
-    }
-    return false;
+    return Boolean(target && current && compareVersions(target, current) > 0);
   };
   const exact = (object, keys) => object && typeof object === "object" &&
     Object.keys(object).length === keys.length && keys.every(key => Object.hasOwn(object, key));
@@ -47,21 +49,32 @@
     const root = C.id("centralUpdate");
     if (!root) return;
     const id = C.id, select = id("centralRelease");
-    let status = null, fetching = false, submitting = false, refreshing = false, timer;
+    let status = null, catalogLoaded = false, fetching = false, submitting = false, refreshing = false, timer;
     const visible = () => admin() && root.open && C.view === "updates" && !document.hidden;
     const usable = () => available.has(status?.state) && !!rpmPattern.exec(status?.current_version);
     const sync = () => {
       const enabled = admin() && usable() && !submitting;
+      const current = rpmPattern.exec(status?.current_version);
       id("centralStatusRefresh").disabled = refreshing;
       id("centralReleaseRefresh").disabled = fetching || submitting;
-      select.disabled = !enabled || !select.options.length;
+      let firstAvailable;
       for (const option of select.options) {
-        option.disabled = !readyTag(option.value, status?.current_version);
+        const target = tagPattern.exec(option.value);
+        const order = current && target ? compareVersions(target, current) : null;
+        option.disabled = order === null || order <= 0;
+        option.textContent = option.value + (order === 0 ? " · 설치됨" : order < 0 ? " · 이전 버전" : "");
+        if (!option.disabled) firstAvailable ??= option.value;
       }
-      if (select.selectedOptions[0]?.disabled) select.value = [...select.options].find(o => !o.disabled)?.value || "";
+      if (current && firstAvailable && (!select.selectedOptions[0] || select.selectedOptions[0].disabled)) {
+        select.value = firstAvailable;
+      }
+      select.disabled = !enabled || !select.options.length;
       id("centralGithubInstall").disabled = !enabled || !readyTag(select.value, status?.current_version);
       id("centralRPM").disabled = id("centralManifest").disabled = !enabled;
       id("centralUploadInstall").disabled = !enabled || !id("centralRPM").files.length;
+      if (catalogLoaded) C.text("centralCatalogNote", !select.options.length ? "이 운영체제용 서명 릴리즈가 없습니다." :
+        !current ? "설치된 버전을 확인하는 중입니다." :
+        firstAvailable ? "최신 버전순으로 표시합니다." : "설치된 버전보다 높은 릴리즈가 없습니다.");
     };
     const renderStatus = value => {
       if (!value || !Object.hasOwn(phases, value.state)) throw new Error("센트럴 업데이트 상태를 확인할 수 없습니다.");
@@ -93,15 +106,20 @@
       try {
         const result = await C.request(base+"releases");
         if (!visible()) return;
+        const selected = select.value;
         select.replaceChildren();
         for (const item of C.array(result.items)) {
           if (!tagPattern.test(item.tag)) continue;
           const option = C.el("option","",item.tag);
           option.value = item.tag; select.append(option);
         }
-        C.text("centralCatalogNote", select.options.length ? "현재 설치 버전보다 높은 릴리즈를 선택하세요." : "이 운영체제용 서명 릴리즈가 없습니다.");
+        if ([...select.options].some(option => option.value === selected)) select.value = selected;
+        catalogLoaded = true;
       } catch (error) {
-        if (visible()) C.text("centralCatalogNote", error.message);
+        if (visible()) {
+          catalogLoaded = false;
+          C.text("centralCatalogNote", error.message);
+        }
       } finally { fetching = false; sync(); }
     };
     const install = async (upload) => {

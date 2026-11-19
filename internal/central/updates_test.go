@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -22,6 +23,44 @@ import (
 func updatePackage(release int) managed.RPMPackage {
 	return managed.RPMPackage{Name: "xe-antishell", Epoch: 0, Version: "0.1.0", Release: fmt.Sprintf("%d.el9", release), Arch: "x86_64"}
 }
+
+func TestUpdateCatalogSortsVersionsAndGroupsPlatforms(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	for i, build := range []struct {
+		version, release, os string
+	}{
+		{"0.1.0", "9.el10", "10"},
+		{"0.1.0", "10.el10", "10"},
+		{"0.1.0", "9.el9", "9"},
+		{"0.1.0", "10.el9_5", "9"},
+		{"0.10.0", "1.el9", "9"},
+		{"0.1.0", "10.el9_6", "9"},
+	} {
+		id := fmt.Sprintf("%064x", i+1)
+		pkg := managed.RPMPackage{Name: "xe-antishell", Version: build.version, Release: build.release, Arch: "x86_64"}
+		body, err := json.Marshal(managed.UpdateRelease{ID: id, Package: pkg, OSFamily: "rhel", OSMajor: build.os, SHA256: id, CreatedAt: time.Unix(int64(i+1), 0)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = f.store.db.ExecContext(ctx, "INSERT INTO update_releases(id,metadata_json,uploaded_by,deleted) VALUES(?,?,?,0)", id, body, "admin"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	items, err := listUpdateReleases(ctx, f.store.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, 0, len(items))
+	for _, item := range items {
+		got = append(got, item.Package.Version+"-"+item.Package.Release)
+	}
+	want := []string{"0.10.0-1.el9", "0.1.0-10.el9_6", "0.1.0-10.el9_5", "0.1.0-10.el10", "0.1.0-9.el9", "0.1.0-9.el10"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("catalog order %v, want %v", got, want)
+	}
+}
+
 func updateVersion(pack managed.RPMPackage) string {
 	return pack.RunningVersion()
 }

@@ -12,7 +12,7 @@ const manifest = {manifest:{schema_version:"1",tag:next,artifact_name:"xe-antish
 const fileOf = o => ({size:JSON.stringify(o).length,text:async()=>JSON.stringify(o)});
 function harness(role="admin") {
   const nodes=new Map(), calls=[], prompts=[], timers=new Map();
-  const state={current:installed, accepted, confirm:true};
+  const state={current:installed, accepted, confirm:true, releases:[next,old]};
   function node() {
     return {open:true,hidden:false,disabled:false,files:[],value:"",options:[],events:{},textContent:"",
       get selectedOptions(){return this.options.filter(o=>o.value===this.value);},
@@ -27,7 +27,7 @@ function harness(role="admin") {
     request:async(path,opts={})=>{
       calls.push({path,opts});
       if(path.endsWith("/status")){if(state.current instanceof Error)throw state.current;return state.current;}
-      if(path.endsWith("/releases"))return {items:[{tag:old},{tag:next}]};
+      if(path.endsWith("/releases"))return {items:state.releases.map(tag=>({tag}))};
       if(state.accepted instanceof Error)throw state.accepted;
       state.current=state.accepted;return state.accepted;
     }};
@@ -42,7 +42,7 @@ test("central updates require an administrator and install nothing on page refre
   assert.equal(forbidden.id("centralUpdate").hidden,true);
   await forbidden.id("centralGithubInstall").emit("click");assert.equal(forbidden.calls.length,0);
   const h=harness();await h.open();
-  assert.equal(h.id("centralRelease").options[0].disabled,true);
+  assert.equal(h.id("centralRelease").options.find(o=>o.value===old).disabled,true);
   assert.equal(h.id("centralRelease").value,next);
   assert.equal(h.calls.some(c=>c.opts.method==="POST"),false);
   h.state.confirm=false;await h.id("centralGithubInstall").emit("click");
@@ -52,6 +52,30 @@ test("central updates require an administrator and install nothing on page refre
   assert.equal(call.path,"/api/central-update/github");assert.equal(call.opts.body.tag,next);
   assert.equal(call.opts.body.confirm,true);assert.ok(call.opts.timeoutMS>20000);
   assert.equal(h.id("centralGithubInstall").disabled,true);
+});
+
+test("release list labels installed and older versions and keeps a manually selected update on refresh",async()=>{
+  const h=harness(), newest="v0.1.0-r21", previous="v0.1.0-r18";
+  h.state.releases=[newest,next,old,previous];
+  let finishStatus;
+  h.state.current=new Promise(resolve=>{finishStatus=resolve;});
+  await h.open();
+  const select=h.id("centralRelease");
+  assert.deepEqual(select.options.map(o=>o.value),h.state.releases);
+  assert.equal(h.id("centralGithubInstall").disabled,true);
+  finishStatus(installed);
+  await h.settle();
+  assert.equal(select.value,newest);
+  assert.equal(select.options[2].textContent,`${old} · 설치됨`);
+  assert.equal(select.options[3].textContent,`${previous} · 이전 버전`);
+  select.value=next;
+  await h.id("centralReleaseRefresh").emit("click");
+  assert.equal(select.value,next);
+  h.state.releases=[old,previous];
+  await h.id("centralReleaseRefresh").emit("click");
+  assert.equal(h.id("centralGithubInstall").disabled,true);
+  assert.match(h.id("centralCatalogNote").textContent,/높은 릴리즈가 없습니다/);
+  assert.equal(h.calls.some(c=>c.opts.method==="POST"),false);
 });
 
 test("central file install forwards a bounded public manifest and streams the selected file",async()=>{

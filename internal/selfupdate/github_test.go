@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"testing"
 )
 
@@ -19,6 +20,37 @@ type releaseTransport func(*http.Request) (*http.Response, error)
 func (f releaseTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 func assetResponse(body []byte) *http.Response {
 	return &http.Response{StatusCode: 200, Header: http.Header{}, ContentLength: int64(len(body)), Body: io.NopCloser(bytes.NewReader(body))}
+}
+
+func TestGitHubReleasesSortByVersionAndRelease(t *testing.T) {
+	tags := []string{"v0.1.0-r9", "v0.1.10-r1", "v0.1.0-r10", "v1.0.0-r1", "v0.10.0-r1", "v0.1.9-r99"}
+	rows := make([]githubRelease, 0, len(tags))
+	for _, tag := range tags {
+		name, err := rpmName(tag, "9")
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows = append(rows, githubRelease{Tag: tag, Assets: []githubAsset{{name, 10}, {name + ".manifest.json", 10}}})
+	}
+	data, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: releaseTransport(func(*http.Request) (*http.Response, error) {
+		return assetResponse(data), nil
+	})}
+	releases, err := listReleases(context.Background(), client, "9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, 0, len(releases))
+	for _, release := range releases {
+		got = append(got, release.Tag)
+	}
+	want := []string{"v1.0.0-r1", "v0.10.0-r1", "v0.1.10-r1", "v0.1.9-r99", "v0.1.0-r10", "v0.1.0-r9"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("catalog = %v, want %v", got, want)
+	}
 }
 
 func TestGitHubReleaseDiscoveryAndDownload(t *testing.T) {
