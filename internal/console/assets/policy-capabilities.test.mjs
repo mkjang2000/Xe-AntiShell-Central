@@ -56,8 +56,9 @@ function harness(keys = [], previewKeys = keys) {
     if (path === "/api/deploy") return {targets: [{agent_id: "web-01"}]};
     throw new Error(`Unexpected request: ${path}`);
   };
-  vm.runInContext(source("policy.js"), context); C.initPolicy();
-  C.updateState({defaults: settings, templates: [template], agents: [], groups: []});
+  for (const name of ["policy-services.js", "policy-diff.js", "policy.js"]) vm.runInContext(source(name), context);
+  C.initPolicy();
+  C.updateState({defaults: settings, templates: [template], agents: [], groups: [], rule_ids: ["web-descendant-shell", "web-descendant-download-tool", "service-protected-file-write"]});
   const editor = C.id("requiredCapabilitiesEditor");
   const choices = editor.descendants().filter(node => node.tagName === "input");
   return {
@@ -68,6 +69,8 @@ function harness(keys = [], previewKeys = keys) {
     recommend() { editor.descendants().find(node => node.tagName === "button").fire("click"); },
     customInput(value) { this.custom.value = value; this.custom.fire("input"); },
     async submit() { C.id("templateForm").fire("submit", {submitter: new Element("button", document)}); await pending; },
+    set(id, value, event = "input") { const node = C.id(id); if (node.type === "checkbox") node.checked = value; else node.value = value; node.fire(event); C.id("templateForm").fire("input", {target: node}); },
+    settings() { return requests.at(-1).body.settings; },
     async preview() { C.id("deployTemplate").value = "ops"; C.id("previewForm").fire("submit", {submitter: new Element("button", document)}); await pending; },
     async deploy() { C.id("deployConfirm").checked = true; C.id("deployConfirm").fire("change"); C.id("deployButton").fire("click"); await pending; }
   };
@@ -117,12 +120,13 @@ test("explicit choices and recommended additions preserve custom gates and inval
   assert.equal(h.requests[0].body.settings.response.mode, "enforce");
 });
 
-test("mode explanations and source conflict warnings do not silently change settings", async () => {
+test("mode cards reveal response conditions without silently changing settings", async () => {
   const h = harness(["collector.tetragon"]); await h.open();
   const original = h.C.id("requiredCapabilities").value;
-  assert.match(text(h.editor), /탐지 전용에서는 아래 조건을 판정하지 않습니다/);
+  assert.equal(h.C.id("responseConditions").hidden, true); assert.equal(h.C.id("responseConditionsOff").hidden, false);
   for (const [mode, message] of [["would_block", /모의 대응 대상으로 기록/], ["enforce", /실행 전 차단은 제공하지 않습니다/]]) {
     h.C.id("responseMode").value = mode; h.C.id("templateForm").fire("input");
+    assert.equal(h.C.id("responseConditions").hidden, false); assert.equal(h.C.id("responseConditionsOff").hidden, true);
     assert.match(text(h.editor), message); assert.equal(h.C.id("requiredCapabilities").value, original);
   }
   h.C.id("responseMode").value = "observe"; h.choose("collector.audit");
@@ -130,6 +134,53 @@ test("mode explanations and source conflict warnings do not silently change sett
   assert.equal(warning.hidden, false); assert.match(warning.textContent, /두 수집기를 모두 필수로 선택하면 대응 조건이 충족되지 않습니다/);
   await h.submit(); assert.deepEqual(h.errors, []);
   assert.deepEqual(h.requests[0].body.settings.response.required_capabilities, ["collector.tetragon", "collector.audit"]);
+});
+
+test("response action follows the mode while an observe policy keeps its saved action", async () => {
+  const h = harness(["observation.process_exec"]);
+  h.template.settings.response.action = "terminate";
+  await h.open(); await h.submit();
+  assert.deepEqual(h.errors, []); assert.equal(h.settings().response.action, "terminate");
+  h.C.id("responseMode").value = "enforce"; h.C.id("templateForm").fire("input"); await h.submit();
+  assert.equal(h.settings().response.mode, "enforce"); assert.equal(h.settings().response.action, "terminate");
+  const g = harness(["observation.process_exec"]);
+  g.template.settings.response = {...g.template.settings.response, mode: "would_block", action: "terminate"};
+  await g.open(); g.C.id("responseMode").value = "observe"; g.C.id("templateForm").fire("input"); await g.submit();
+  assert.deepEqual(g.errors, []); assert.equal(g.settings().response.action, "none");
+  const empty = harness(); await empty.open();
+  empty.C.id("responseMode").value = "enforce"; empty.C.id("templateForm").fire("input");
+  assert.equal(empty.C.id("responseHelp").hidden, false); assert.match(empty.C.id("responseHelp").textContent, /권장 조건 3개 선택/);
+  assert.equal(empty.C.id("requiredCapabilities").value, "", "switching modes never adds conditions by itself");
+});
+
+test("an invalid value opens its section, explains the error near save and blocks the request", async () => {
+  const h = harness(); await h.open();
+  assert.equal(h.C.id("policySection-basics").hidden, false);
+  h.set("sampleInterval", "1"); await h.submit();
+  assert.equal(h.requests.length, 0); assert.match(h.errors.at(-1), /수집 간격/);
+  assert.equal(h.C.id("policySection-agent").hidden, false); assert.equal(h.C.id("policySection-basics").hidden, true);
+  assert.equal(h.C.id("templateFormError").hidden, false); assert.match(h.C.id("templateFormError").textContent, /수집 간격/);
+  h.set("sampleInterval", "10"); h.set("templateName", " "); await h.submit();
+  assert.equal(h.requests.length, 0); assert.equal(h.C.id("policySection-basics").hidden, false);
+  h.set("templateName", "운영 정책"); await h.submit();
+  assert.equal(h.requests.length, 1); assert.equal(h.C.id("templateFormError").hidden, true);
+});
+
+test("duplicate copies the saved settings into a new unsaved policy and deploy preselects the saved one", async () => {
+  const h = harness(["observation.process_exec"]); h.C.session = {role: "operator"}; await h.open();
+  assert.equal(h.C.id("duplicateTemplate").disabled, false);
+  h.C.id("deployFromEditor").fire("click");
+  assert.equal(h.C.id("deployTemplate").value, "ops");
+  await h.C.id("duplicateTemplate").fire("click");
+  assert.equal(h.C.id("templateID").value, ""); assert.equal(h.C.id("templateVersionInput").value, 0);
+  assert.equal(h.C.id("templateName").value, "운영 정책 복사본"); assert.equal(h.C.hasUnsavedPolicy(), true);
+  assert.equal(h.C.id("deployFromEditor").disabled, true);
+  h.set("templateID", "ops-copy"); await h.submit();
+  assert.deepEqual(h.errors, []);
+  assert.equal(h.requests[0].body.id, "ops-copy"); assert.equal(h.requests[0].body.version, 0);
+  assert.deepEqual(h.requests[0].body.settings, plain(h.template.settings));
+  const viewer = harness(); viewer.C.session = {role: "viewer"}; await viewer.open();
+  assert.equal(viewer.C.id("duplicateTemplate").disabled, true); assert.equal(viewer.C.id("deployFromEditor").disabled, true);
 });
 
 test("custom gate validation follows wire bounds and rejects duplicate or misplaced keys", async () => {
@@ -175,38 +226,57 @@ test("privilege opt-in and root alert mode roundtrip while disabled fields disap
 
 test("service scope editor preserves inheritance, an empty override, and an explicit policy", async () => {
   const h = harness();
-  const scopes = [{service:"web.service", protected_dirs:["/srv/web"]}];
+  const scopes = [{service:"web.service", protected_dirs:["/srv/web"], allowed_tcp_destinations:[{cidr:"192.0.2.0/24", ports:[443]}]}];
+  h.template.settings.detection.web_services = ["web.service"];
   h.template.settings.detection.service_observations = scopes;
   await h.open();
   assert.equal(h.C.id("centralServiceScopes").checked, true);
-  assert.deepEqual(JSON.parse(h.C.id("serviceScopes").value), scopes);
+  assert.equal(h.C.id("serviceScope-0-tcp").value, "192.0.2.0/24 443");
   await h.submit();
-  assert.deepEqual(h.requests.at(-1).body.settings.detection.service_observations, scopes);
-  h.C.id("serviceScopes").value = "[]";
+  assert.deepEqual(h.settings().detection.service_observations, scopes);
+  h.set("serviceScope-0-writable", "/srv/web/uploads");
+  h.set("serviceScope-0-tcp", "192.0.2.0/24 443\n2001:db8::/32");
   await h.submit();
-  assert.deepEqual(h.requests.at(-1).body.settings.detection.service_observations, []);
-  h.C.id("serviceScopes").value = "null";
+  assert.deepEqual(h.errors, []);
+  assert.deepEqual(h.settings().detection.service_observations, [{service:"web.service", protected_dirs:["/srv/web"], allowed_write_dirs:["/srv/web/uploads"], allowed_tcp_destinations:[{cidr:"192.0.2.0/24", ports:[443]}, {cidr:"2001:db8::/32"}]}]);
+  for (const [id, value, message] of [["serviceScope-0-writable", "/tmp/uploads", /보호 디렉터리 안/], ["serviceScope-0-tcp", "192.0.2.1/24 443", /CIDR/], ["serviceScope-0-tcp", "192.0.2.0/24 0", /포트/], ["serviceScope-0-protected", "srv/web", /정규화된 경로/]]) {
+    const before = h.requests.length, saved = h.C.id(id).value;
+    h.set(id, value); await h.submit();
+    assert.equal(h.requests.length, before); assert.match(h.errors.at(-1), message);
+    assert.equal(h.C.id("policySection-services").hidden, false);
+    h.set(id, saved);
+  }
+  h.C.id("serviceScopeRows").descendants().find(node => node.textContent === "삭제").fire("click");
+  assert.equal(h.C.id("serviceScopeEmpty").hidden, false);
   await h.submit();
-  assert.match(h.errors.at(-1), /목록/);
-  h.C.id("centralServiceScopes").checked = false;
-  h.C.id("templateForm").fire("input");
-  assert.equal(h.C.id("serviceScopes").disabled, true);
+  assert.deepEqual(h.settings().detection.service_observations, []);
+  h.set("centralServiceScopes", false, "change");
+  assert.equal(h.C.id("serviceScopeEditor").hidden, true);
   await h.submit();
-  assert.equal(Object.hasOwn(h.requests.at(-1).body.settings.detection, "service_observations"), false);
+  assert.equal(Object.hasOwn(h.settings().detection, "service_observations"), false);
 });
 
-test("temporary rule exceptions survive template edit and clearing restores profile defaults", async () => {
+test("rule controls edit as rows, keep unchanged expiries and clearing restores profile defaults", async () => {
   const h = harness();
   const controls = [{service:"web.service",rule_id:"web-descendant-shell",mode:"suppress_until",reason:"maintenance",expires_at:"2026-12-01T01:00:00Z"}];
   h.template.settings.detection.service_rule_controls = controls;
   await h.open();
-  assert.deepEqual(JSON.parse(h.C.id("serviceRuleControls").value), controls);
+  assert.equal(h.C.id("ruleControl-0-reason").value, "maintenance");
   await h.submit();
-  assert.deepEqual(h.requests.at(-1).body.settings.detection.service_rule_controls, controls);
-  h.C.id("serviceRuleControls").value = JSON.stringify([...controls,...controls]);
+  assert.deepEqual(h.settings().detection.service_rule_controls, controls);
+  h.C.id("ruleControlAdd").fire("click");
+  h.set("ruleControl-1-service", "web.service"); h.set("ruleControl-1-rule", "web-descendant-shell", "change");
+  await h.submit(); assert.match(h.errors.at(-1), /중복/);
+  h.set("ruleControl-1-rule", "web-descendant-download-tool", "change");
+  h.set("ruleControl-0-expires", "2026-12-24T09:30");
   await h.submit();
-  assert.match(h.errors.at(-1), /중복/);
-  h.C.id("serviceRuleControls").value = "[]";
+  const expiry = new Date("2026-12-24T09:30").toISOString().replace(/\.000Z$/, "Z");
+  assert.deepEqual(h.settings().detection.service_rule_controls, [{...controls[0], expires_at: expiry}, {service:"web.service", rule_id:"web-descendant-download-tool", mode:"disabled"}]);
+  h.set("ruleControl-1-mode", "suppress_until", "change"); await h.submit();
+  assert.match(h.errors.at(-1), /예외 사유/);
+  h.set("ruleControl-1-mode", "enabled", "change"); h.set("ruleControl-0-mode", "disabled", "change");
+  await h.submit(); assert.deepEqual(h.settings().detection.service_rule_controls.map(c => Object.keys(c).length), [3, 3]);
+  for (const _ of [0, 1]) h.C.id("ruleControlRows").descendants().find(node => node.textContent === "삭제").fire("click");
   await h.submit();
-  assert.equal(Object.hasOwn(h.requests.at(-1).body.settings.detection, "service_rule_controls"),false);
+  assert.equal(Object.hasOwn(h.settings().detection, "service_rule_controls"), false);
 });

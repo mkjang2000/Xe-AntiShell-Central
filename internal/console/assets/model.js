@@ -213,31 +213,15 @@
     if (!/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/.test(challenge)) throw new Error("제거 챌린지는 서버에서 생성한 43자 요청값입니다. 'sentinel managed challenge'의 challenge 값 또는 출력 JSON을 입력하세요.");
     return challenge;
   };
-  const serviceScopeFields = values => {
-    if (!values.centralServiceScopes) return {};
-    let scopes;
-    try {
-      scopes = JSON.parse(values.serviceScopes);
-    } catch (_) {
-      throw new Error("서비스별 범위를 JSON 배열로 입력하세요. 모두 끄려면 []를 입력하세요.");
-    }
-    if (!Array.isArray(scopes)) throw new Error("서비스별 범위에는 목록이 필요합니다.");
-    return {service_observations: scopes};
-  };
   C.serviceScopeSummary = detection => {
     if (!Object.hasOwn(detection, "service_observations")) return "호스트 YAML 사용";
-    const scopes = detection.service_observations;
+    const scopes = C.array(detection.service_observations);
     return scopes.length ? "중앙 정책 · " + scopes.map(scope => scope.service).join(" · ") : "중앙 정책 · 모든 서비스 범위 끔";
   };
-  const serviceRuleFields = value => {
-    if (!value?.trim()) return {};
-    let controls;
-    try { controls = JSON.parse(value); } catch (_) { throw new Error("서비스별 규칙을 JSON 배열로 입력하세요."); }
-    if (!Array.isArray(controls)) throw new Error("서비스별 규칙 목록이 필요합니다.");
-    return controls.length ? {service_rule_controls: controls} : {};
-  };
-  C.settingsFromValues = (values, draft = {}) => ({
-    detection: {...serviceScopeFields(values), ...serviceRuleFields(values.serviceRuleControls), enabled: Boolean(values.detectionEnabled), extended_process_rules: Boolean(values.extendedRules), ...(values.privilegeRules ? {privilege_rules:true,root_exec_alerts:values.rootExecAlerts||"suspicious"} : {}), web_executables: C.lines(values.webExecutables), web_services: C.lines(values.webServices), shells: C.lines(values.shells), allowed_pairs: C.lines(values.allowedPairs)},
+  // services holds editor output: service_rule_controls only when non-empty and
+  // service_observations only when the central scope replaces host YAML.
+  C.settingsFromValues = (values, draft = {}, services = {}) => ({
+    detection: {...services, enabled: Boolean(values.detectionEnabled), extended_process_rules: Boolean(values.extendedRules), ...(values.privilegeRules ? {privilege_rules:true,root_exec_alerts:values.rootExecAlerts||"suspicious"} : {}), web_executables: C.lines(values.webExecutables), web_services: C.lines(values.webServices), shells: C.lines(values.shells), allowed_pairs: C.lines(values.allowedPairs)},
     response: {mode: values.responseMode, action: values.responseAction, risk_threshold: Number(values.riskThreshold), min_confidence: Number(values.minConfidence), required_capabilities: C.lines(values.requiredCapabilities)},
     uninstall_mode: values.uninstallMode,
     monitoring: {enabled: Boolean(values.monitoringEnabled), sample_interval_seconds: Number(values.sampleInterval), process_limit: Number(values.processLimit)},
@@ -251,6 +235,8 @@
     },
     validity_hours: Number(values.validityHours)
   });
+  // Validation errors name the editor section that holds the rejected value.
+  C.sectionError = (section, message) => Object.assign(new Error(message), {section});
   C.settingsFromPolicy = (policy, desired) => {
     const p = C.object(policy), source = C.object(desired);
     const hours = Math.round((Date.parse(p.expires_at) - Date.parse(p.issued_at)) / 3600000);
@@ -259,27 +245,28 @@
     return {...(bindings.length ? {application_bindings: bindings, applications: structuredClone(applications)} : {}), detection: structuredClone(p.detection || {}), response: structuredClone(p.response || {}), uninstall_mode: p.uninstall_mode, monitoring: structuredClone(p.monitoring || {}), integrity: structuredClone(source.integrity || {enabled: false, mode: "observe", require_tpm: false, paths: []}), validity_hours: Number.isFinite(hours) ? Math.max(1, Math.min(8760, hours)) : 24};
   };
   C.validateSettings = settings => {
-    const d = settings.detection, r = settings.response, m = settings.monitoring;
+    const d = settings.detection, r = settings.response, m = settings.monitoring, fail = C.sectionError;
     if (Object.hasOwn(d, "service_rule_controls")) {
       const controls = d.service_rule_controls;
-      if (!Array.isArray(controls) || controls.length > 256) throw new Error("서비스별 규칙 설정은 256개까지 입력하세요.");
+      if (!Array.isArray(controls) || controls.length > 256) throw fail("services", "서비스별 규칙 설정은 256개까지 입력하세요.");
       const seen = new Set();
       for (const c of controls) {
-        if (!c || !c.service || !c.rule_id || !["enabled","disabled","suppress_until"].includes(c.mode)) throw new Error("서비스, 규칙 ID와 적용 방식을 확인하세요.");
-        if (c.mode === "suppress_until" && (!c.reason?.trim() || !Number.isFinite(Date.parse(c.expires_at)) || !/(Z|[+]00:00)$/.test(c.expires_at))) throw new Error("임시 예외에는 사유와 UTC 만료 시각이 필요합니다.");
-        if (c.mode !== "suppress_until" && (c.reason || c.expires_at)) throw new Error("사유와 만료 시각은 임시 예외에만 지정하세요.");
+        if (!c || !c.service || !c.rule_id || !["enabled","disabled","suppress_until"].includes(c.mode)) throw fail("services", "서비스, 규칙 ID와 적용 방식을 확인하세요.");
+        if (c.mode === "suppress_until" && (!c.reason?.trim() || !Number.isFinite(Date.parse(c.expires_at)) || !/(Z|[+]00:00)$/.test(c.expires_at))) throw fail("services", "임시 예외에는 사유와 만료 시각이 필요합니다.");
+        if (c.mode !== "suppress_until" && (c.reason || c.expires_at)) throw fail("services", "사유와 만료 시각은 임시 예외에만 지정하세요.");
         const key = JSON.stringify([c.service, c.rule_id]);
-        if (seen.has(key)) throw new Error("서비스와 규칙 조합이 중복됩니다.");
+        if (seen.has(key)) throw fail("services", `서비스와 규칙 조합이 중복됩니다: ${c.service} · ${c.rule_id}`);
         seen.add(key);
       }
     }
-    if (Object.hasOwn(d, "service_observations") && (!Array.isArray(d.service_observations) || d.service_observations.length > 64 || d.service_observations.some(scope => !scope || typeof scope.service !== "string" || !scope.service))) throw new Error("서비스 이름이 있는 범위를 최대 64개까지 입력하세요.");
-    if (d.privilege_rules !== undefined && typeof d.privilege_rules !== "boolean" || d.root_exec_alerts !== undefined && typeof d.root_exec_alerts !== "string" || d.root_exec_alerts && (!d.privilege_rules || !["suspicious","all"].includes(d.root_exec_alerts))) throw new Error("전역 root 실행 경보 범위를 확인하세요.");
-    if (d.enabled && !d.privilege_rules && (!d.shells.length || !d.web_executables.length && !d.web_services.length)) throw new Error("탐지를 사용하려면 웹 실행 파일 또는 서비스, 탐지할 셸을 입력하세요.");
-    if (r.mode !== "observe" && (!d.enabled || r.action !== "terminate" || !r.required_capabilities.length || r.risk_threshold <= 0 || r.min_confidence <= 0)) throw new Error("모의 대응·자동 종료는 탐지 활성화, 종료 동작, 필수 기능 조건, 0보다 큰 위험 점수·신뢰도가 필요합니다.");
-    if (settings.integrity.config_sha256 && (!settings.integrity.package_files || !/^[a-f0-9]{64}$/.test(settings.integrity.config_sha256))) throw new Error("에이전트 파일 검사를 선택한 후 승인된 YAML의 소문자 SHA-256을 입력하세요.");
-    const ranges = [[r.risk_threshold,0,100,"위험 점수",true],[r.min_confidence,0,1,"신뢰도",false],[m.sample_interval_seconds,5,3600,"수집 간격",true],[m.process_limit,1,2000,"프로세스 조회 수",true],[settings.validity_hours,1,8760,"정책 유효 기간",true]];
-    for (const [n,min,max,label,integer] of ranges) if (!Number.isFinite(n) || n < min || n > max || integer && !Number.isInteger(n)) throw new Error(`${label}은 ${min}–${max} 범위${integer ? "의 정수" : ""}로 입력하세요.`);
+    if (Object.hasOwn(d, "service_observations") && (!Array.isArray(d.service_observations) || d.service_observations.length > 64 || d.service_observations.some(scope => !scope || typeof scope.service !== "string" || !scope.service))) throw fail("services", "서비스 이름이 있는 범위를 최대 64개까지 입력하세요.");
+    if (d.privilege_rules !== undefined && typeof d.privilege_rules !== "boolean" || d.root_exec_alerts !== undefined && typeof d.root_exec_alerts !== "string" || d.root_exec_alerts && (!d.privilege_rules || !["suspicious","all"].includes(d.root_exec_alerts))) throw fail("detection", "전역 root 실행 경보 범위를 확인하세요.");
+    if (d.enabled && !d.privilege_rules && (!d.shells.length || !d.web_executables.length && !d.web_services.length)) throw fail("detection", "탐지를 사용하려면 웹 실행 파일 또는 서비스, 탐지할 셸을 입력하세요.");
+    if (r.mode !== "observe" && !d.enabled) throw fail("detection", "모의 대응·자동 종료에는 탐지 엔진이 켜져 있어야 합니다.");
+    if (r.mode !== "observe" && (r.action !== "terminate" || !r.required_capabilities.length || r.risk_threshold <= 0 || r.min_confidence <= 0)) throw fail("response", "모의 대응·자동 종료는 종료 동작, 필수 기능 조건, 0보다 큰 위험 점수·신뢰도가 필요합니다.");
+    if (settings.integrity.config_sha256 && (!settings.integrity.package_files || !/^[a-f0-9]{64}$/.test(settings.integrity.config_sha256))) throw fail("agent", "에이전트 파일 검사를 선택한 후 승인된 YAML의 소문자 SHA-256을 입력하세요.");
+    const ranges = [[r.risk_threshold,0,100,"위험 점수",true,"response"],[r.min_confidence,0,1,"신뢰도",false,"response"],[m.sample_interval_seconds,5,3600,"수집 간격",true,"agent"],[m.process_limit,1,2000,"프로세스 조회 수",true,"agent"],[settings.validity_hours,1,8760,"정책 유효 기간",true,"agent"]];
+    for (const [n,min,max,label,integer,section] of ranges) if (!Number.isFinite(n) || n < min || n > max || integer && !Number.isInteger(n)) throw fail(section, `${label}은 ${min}–${max} 범위${integer ? "의 정수" : ""}로 입력하세요.`);
     return settings;
   };
   C.previewSnapshot = (preview, templateID) => {

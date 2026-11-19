@@ -11,12 +11,15 @@
   <link rel="stylesheet" href="/assets/accounts.css">
   <link rel="stylesheet" href="/assets/updates.css">
   <link rel="stylesheet" href="/assets/application-policies.css">
+  <link rel="stylesheet" href="/assets/policy-editor.css">
   <script src="/assets/model.js" defer></script>
   <script src="/assets/privilege.js" defer></script>
   <script src="/assets/access.js" defer></script>
   <script src="/assets/file-integrity.js" defer></script>
   <script src="/assets/fleet.js" defer></script>
   <script src="/assets/policy-trials.js" defer></script>
+  <script src="/assets/policy-services.js" defer></script>
+  <script src="/assets/policy-diff.js" defer></script>
   <script src="/assets/application-policies.js" defer></script>
   <script src="/assets/applied-policies.js" defer></script>
   <script src="/assets/policy-usage.js" defer></script>
@@ -63,7 +66,7 @@
         <div id="overviewMetrics" class="metrics"></div>
         <div class="two-column overview-columns">
           <section class="panel"><div class="panel-head"><h2>우선 확인할 서버</h2><a href="#agents" class="text-link">전체 에이전트 →</a></div><p class="panel-note">미수신·수집 오류·정책 적용 대기 기준</p><div id="attentionList" class="compact-list"></div></section>
-          <section class="panel"><div class="panel-head"><h2>정책 운영</h2><a href="#policies" class="text-link">정책 관리 →</a></div><dl id="policyOverview" class="facts"></dl><p class="panel-note">템플릿·그룹 변경은 저장만 됩니다. 미리보기 후 배포를 확정해야 서버에 전달됩니다.</p><div class="inline-note">에이전트 파일 무결성을 켠 정책을 배포하면 서버별 측정 결과를 에이전트 상세에서 조회할 수 있습니다.</div></section>
+          <section class="panel"><div class="panel-head"><h2>정책 운영</h2><a href="#policies" class="text-link">정책 관리 →</a></div><dl id="policyOverview" class="facts"></dl><p class="panel-note">정책·그룹 변경은 저장만 됩니다. 미리보기 후 배포를 확정해야 서버에 전달됩니다.</p><div class="inline-note">에이전트 파일 무결성을 켠 정책을 배포하면 서버별 측정 결과를 에이전트 상세에서 조회할 수 있습니다.</div></section>
         </div>
         <section class="panel"><div class="panel-head"><h2>최근 탐지</h2><a href="#history" class="text-link">탐지·실행 이력 →</a></div><div id="recentFindings" class="compact-list"></div><p class="panel-note">중앙 보존 기록의 최근 탐지입니다. 전체 탐지 건수나 침해 확정을 뜻하지 않습니다.</p></section>
         <p class="footnote">15초마다 상태를 갱신합니다. 에이전트 보고가 없거나 오래된 값은 미확인·지연으로 표시합니다.</p>
@@ -84,101 +87,195 @@
 
       <section id="view-policies" class="view" aria-label="보안 정책 관리" hidden>
         <nav class="policy-workspace-nav" aria-label="보안 정책 작업">
-          <button type="button" id="policyCatalogTab" aria-controls="policyCatalogPane" aria-pressed="true">정책 목록·편집</button>
-          <button type="button" id="policyAssignmentsTab" aria-controls="policyAssignmentsPane" aria-pressed="false">에이전트별 적용 정책</button>
-          <button type="button" id="policyDeploymentTab" aria-controls="policyDeploymentPane" aria-pressed="false">배포·진행 상태</button>
+          <button type="button" id="policyCatalogTab" aria-controls="policyCatalogPane" aria-pressed="true">정책 편집</button>
+          <button type="button" id="policyAssignmentsTab" aria-controls="policyAssignmentsPane" aria-pressed="false">적용 현황</button>
+          <button type="button" id="policyDeploymentTab" aria-controls="policyDeploymentPane" aria-pressed="false">배포</button>
         </nav>
         <div id="policyCatalogPane" class="split-editor policy-editor">
-          <section class="panel template-sidebar">
-            <div class="panel-head"><h2>전체 정책 <span id="templateCatalogCount" class="catalog-count"></span></h2><button id="newTemplate" type="button" class="small">정책 만들기</button></div>
-            <div class="field"><label for="templateSearch">정책 검색</label><input id="templateSearch" type="search" placeholder="이름, ID, 연결된 서비스"></div>
+          <section class="panel template-sidebar" aria-labelledby="policyListHeading">
+            <div class="panel-head"><h2 id="policyListHeading">정책 <span id="templateCatalogCount" class="catalog-count"></span></h2><button id="newTemplate" type="button" class="small">새 정책</button></div>
+            <div class="policy-list-filters">
+              <div class="field"><label for="templateSearch">검색</label><input id="templateSearch" type="search" placeholder="이름, ID, 서비스" maxlength="200"></div>
+              <div class="field"><label for="templateFilter">구분</label><select id="templateFilter"><option value="">전체</option><option value="observe">탐지 전용</option><option value="would_block">모의 대응</option><option value="enforce">자동 종료</option><option value="bindings">서비스 연결 포함</option><option value="outdated">재배포 필요</option><option value="unused">배포 안 됨</option></select></div>
+            </div>
             <div id="templateList" class="select-list"></div>
           </section>
-          <section class="panel"><div class="panel-head"><h2 id="templateEditorTitle" tabindex="-1">템플릿 만들기</h2><span id="templateVersion" class="tag neutral">새 템플릿</span></div>
-            <details id="templateUsage" class="app-policy-snapshot" hidden><summary>이 정책을 배포한 호스트·서비스 (모든 버전)</summary>
-              <div id="templateUsageReport"></div><div class="form-actions"><button id="templateUsagePrevious" type="button" class="small">이전 구간</button><button id="templateUsageNext" type="button" class="small">다음 구간</button><button id="templateUsageReload" type="button" class="small quiet">다시 조회</button></div>
-            </details>
-            <form id="templateForm"><input id="templateVersionInput" type="hidden" value="0"><div class="form-grid"><div class="field"><label for="templateID">템플릿 ID</label><input id="templateID" required pattern="[A-Za-z0-9][A-Za-z0-9_.-]{0,127}" maxlength="128" placeholder="예: web-observe"></div><div class="field"><label for="templateName">템플릿 이름</label><input id="templateName" required maxlength="128" placeholder="예: 웹 서버 기본 탐지"></div></div><div class="field"><label for="templateDescription">설명</label><input id="templateDescription" maxlength="2000"></div>
-              <section class="app-policy-editor" aria-labelledby="appPolicyHeading">
-                <div class="app-section-heading"><h3 id="appPolicyHeading">애플리케이션별 정책</h3><span id="appBindingCount"></span></div>
-                <p class="panel-note">시스템 서비스 이름에 저장된 정책 버전을 연결하세요. 연결된 서비스는 해당 정책의 탐지·대응을 사용하고, 나머지는 호스트 기본 정책으로 관찰합니다.</p>
-                <div id="appBindingRows"></div>
-                <fieldset class="app-binding-form"><legend id="appBindingLegend">서비스 연결</legend>
-                  <div class="app-binding-fields">
-                    <div class="field"><label for="appBindingService">시스템 서비스</label><input id="appBindingService" maxlength="255" spellcheck="false" placeholder="예: nginx.service"></div>
-                    <div class="field"><label for="appBindingSource">적용할 정책 버전</label><select id="appBindingSource"><option value="">저장된 정책 선택</option></select></div>
-                    <button id="appBindingAdd" type="button">연결 추가</button><button id="appBindingCancel" type="button" class="small quiet" hidden>취소</button>
+          <section class="panel policy-editor-panel" aria-labelledby="templateEditorTitle">
+            <div class="policy-editor-head">
+              <div class="policy-editor-title"><p class="eyebrow" id="templateVersion">새 정책</p><h2 id="templateEditorTitle" tabindex="-1">새 정책</h2><div id="templateSummary" class="policy-summary"></div></div>
+              <div class="policy-head-actions"><button id="duplicateTemplate" type="button" class="small" disabled>복제</button><button id="deployFromEditor" type="button" class="small" disabled>배포…</button><button id="deleteTemplate" type="button" class="small danger quiet" disabled>삭제</button></div>
+            </div>
+            <nav class="policy-section-nav" aria-label="정책 설정 구역">
+              <button type="button" id="policySectionTab-basics" aria-controls="policySection-basics" aria-pressed="true">개요<span class="section-flag" hidden></span></button>
+              <button type="button" id="policySectionTab-detection" aria-controls="policySection-detection" aria-pressed="false">탐지<span class="section-flag" hidden></span></button>
+              <button type="button" id="policySectionTab-response" aria-controls="policySection-response" aria-pressed="false">대응<span class="section-flag" hidden></span></button>
+              <button type="button" id="policySectionTab-services" aria-controls="policySection-services" aria-pressed="false">서비스별 설정<span class="section-flag" hidden></span></button>
+              <button type="button" id="policySectionTab-agent" aria-controls="policySection-agent" aria-pressed="false">에이전트 설정<span class="section-flag" hidden></span></button>
+              <button type="button" id="policySectionTab-usage" aria-controls="policySection-usage" aria-pressed="false">사용처</button>
+            </nav>
+            <form id="templateForm" novalidate>
+              <input id="templateVersionInput" type="hidden" value="0">
+              <section id="policySection-basics" class="policy-section" aria-label="개요">
+                <div class="form-grid">
+                  <div class="field"><label for="templateID">정책 ID</label><input id="templateID" required pattern="[A-Za-z0-9][A-Za-z0-9_.-]{0,127}" maxlength="128" spellcheck="false" placeholder="예: web-observe"><small id="templateIDNote">영문·숫자·점·하이픈·밑줄 · 저장 후 바꿀 수 없습니다</small></div>
+                  <div class="field"><label for="templateName">정책 이름</label><input id="templateName" required maxlength="128" placeholder="예: 웹 서버 기본 탐지"></div>
+                </div>
+                <div class="field"><label for="templateDescription">설명 (선택)</label><input id="templateDescription" maxlength="2000"></div>
+                <h3 class="policy-subheading">설정 요약</h3>
+                <div id="templateOverview"></div>
+              </section>
+              <section id="policySection-detection" class="policy-section" aria-label="탐지" hidden>
+                <label class="option-row"><input id="detectionEnabled" type="checkbox" checked><span><strong>탐지 엔진 사용</strong><small>웹 출처 규칙과 전역 규칙을 실행합니다. 끄면 탐지와 대응이 모두 멈춥니다.</small></span></label>
+                <fieldset><legend>웹 출처 탐지 대상</legend>
+                  <p class="field-note">웹 서버·웹 서비스에서 시작된 셸 실행을 탐지합니다. 한 줄에 하나씩, 실행 파일은 경로 없이 이름만 입력합니다.</p>
+                  <div class="form-grid">
+                    <div class="field"><label for="webExecutables">웹 실행 파일</label><textarea id="webExecutables" rows="4" spellcheck="false" placeholder="nginx&#10;php-fpm"></textarea></div>
+                    <div class="field"><label for="webServices">웹 서비스 (systemd 유닛)</label><textarea id="webServices" rows="4" spellcheck="false" placeholder="nginx.service&#10;my-app.service"></textarea></div>
+                    <div class="field"><label for="shells">탐지할 셸</label><textarea id="shells" rows="4" spellcheck="false" placeholder="sh&#10;bash"></textarea></div>
+                    <div class="field"><label for="allowedPairs">탐지 예외 (출처:실행 파일)</label><textarea id="allowedPairs" rows="4" spellcheck="false" placeholder="maintenance.service:bash"></textarea></div>
                   </div>
-                  <p id="appBindingHint" class="field-note"></p><p id="appBindingError" class="notice warning" role="alert" hidden></p>
+                </fieldset>
+                <fieldset><legend>추가 규칙</legend>
+                  <label class="option-row"><input id="extendedRules" type="checkbox"><span><strong>확장 실행 규칙</strong><small>웹 출처의 다운로드·정찰 도구, 인터프리터, 임시 경로 실행까지 탐지합니다. 켜면 기본 셸 규칙을 포함한 모든 규칙이 탐지 전용으로 기록되어 대응이 동작하지 않습니다.</small></span></label>
+                  <label class="option-row"><input id="privilegeRules" type="checkbox"><span><strong>전역 root 실행·권한 변경 탐지</strong><small>웹 출처와 관계없이 동작하는 탐지 전용 규칙입니다. 권한 변경 센서 수신은 에이전트 기능 상태에서 확인하고, 구형 에이전트는 먼저 업데이트하세요.</small></span></label>
+                  <div id="rootExecAlertsField" class="field nested-field"><label for="rootExecAlerts">root 실행 경보 범위</label><select id="rootExecAlerts"><option value="suspicious">의심 문맥만 경보 (기본)</option><option value="all">모든 root 실행 경보 (정상 실행 포함)</option></select></div>
                 </fieldset>
               </section>
-              <section aria-labelledby="securityPolicyHeading">
-                <h3 id="securityPolicyHeading">호스트 기본 보안 정책 <span lang="en">Security Policy</span></h3>
-                <fieldset><legend>탐지 설정</legend><div class="check-row"><label><input id="detectionEnabled" type="checkbox" checked>탐지 엔진 사용 (웹·전역 규칙 공통)</label><label><input id="extendedRules" type="checkbox">확장 실행 규칙 사용</label><label><input id="privilegeRules" type="checkbox">전역 root 실행·권한 변경 탐지</label></div><p class="field-note">확장 규칙은 웹 출처의 도구·인터프리터·임시 경로 실행을 탐지합니다. 확장 규칙을 켜면 기본 웹셸 규칙을 포함해 모든 경보가 탐지 전용으로 기록됩니다.</p><div class="field"><label for="rootExecAlerts">root 실행 경보 범위</label><select id="rootExecAlerts"><option value="suspicious">의심 문맥만 경보 (기본)</option><option value="all">모든 root 실행 경보 (정상 실행 포함)</option></select><p class="field-note">전역 규칙은 웹 출처와 관계없이 동작하며 탐지 전용입니다. 모든 root 실행 이력과 경보는 구분됩니다. 권한 변경 센서의 실제 수신 여부는 에이전트 기능 상태에서 확인하세요. 구형 에이전트에는 먼저 업데이트가 필요합니다.</p></div><details class="editor-section"><summary>탐지 대상·셸·예외 목록 편집</summary><div class="form-grid"><div class="field"><label for="webExecutables">웹 실행 파일 이름</label><textarea id="webExecutables" rows="3" placeholder="nginx&#10;php-fpm"></textarea></div><div class="field"><label for="webServices">웹 서비스 이름</label><textarea id="webServices" rows="3" placeholder="nginx.service&#10;my-app.service"></textarea></div><div class="field"><label for="shells">탐지할 셸 이름</label><textarea id="shells" rows="3" placeholder="sh&#10;bash"></textarea></div><div class="field"><label for="allowedPairs">탐지 예외 (출처:실행 파일)</label><textarea id="allowedPairs" rows="3" placeholder="maintenance.service:bash"></textarea></div></div><p class="field-note">목록은 한 줄에 한 항목씩 입력합니다. 실행 파일은 경로 없이 이름만 입력하세요.</p></details>
-                <details class="editor-section"><summary>서비스별 규칙과 임시 예외</summary>
-                  <div class="field"><label for="serviceRuleControls">서비스와 규칙별 설정 (JSON 배열)</label>
-                    <textarea id="serviceRuleControls" rows="5" spellcheck="false" placeholder='[{"service":"web.service","rule_id":"service-protected-file-write","mode":"suppress_until","reason":"승인된 배포","expires_at":"2026-12-01T05:00:00Z"}]'></textarea>
-                    <p class="field-note">enabled는 사용 중인 프로필의 규칙을 허용하고, disabled는 해당 서비스에서만 규칙을 끕니다. suppress_until에는 사유와 UTC 만료 시각이 필요합니다. 설정을 지우면 프로필의 기본 판정이 적용됩니다.</p>
-                    <details><summary>사용 가능한 규칙 ID</summary><p id="ruleControlIDs"></p></details>
+              <section id="policySection-response" class="policy-section" aria-label="대응" hidden>
+                <fieldset class="mode-choice"><legend>대응 방식</legend>
+                  <input id="responseMode" type="hidden" value="observe">
+                  <div class="mode-options">
+                    <label class="mode-option" data-mode="observe"><input type="radio" name="responseModeChoice" value="observe"><span><strong>탐지 전용</strong><small>탐지 결과만 기록합니다. 프로세스를 종료하지 않습니다.</small></span></label>
+                    <label class="mode-option" data-mode="would_block"><input type="radio" name="responseModeChoice" value="would_block"><span><strong>모의 대응</strong><small>종료 조건을 만족한 실행을 기록만 합니다. 실제로 종료하지 않습니다.</small></span></label>
+                    <label class="mode-option" data-mode="enforce"><input type="radio" name="responseModeChoice" value="enforce"><span><strong>자동 종료</strong><small>조건을 모두 만족하면 실행된 프로세스에 종료 신호를 보냅니다. 실행 전 차단은 제공하지 않습니다.</small></span></label>
                   </div>
-                </details>
-                <details class="editor-section"><summary>서비스별 파일·TCP 범위</summary>
-                  <label><input id="centralServiceScopes" type="checkbox"> 중앙 범위로 호스트 설정 교체</label>
-                  <div class="field"><label for="serviceScopes">서비스 범위 JSON</label>
-                    <textarea id="serviceScopes" rows="6" spellcheck="false" placeholder='[{"service":"web.service","protected_dirs":["/srv/web"],"allowed_write_dirs":["/srv/web/uploads"],"allowed_tcp_destinations":[{"cidr":"192.0.2.0/24","ports":[443]}]}]'></textarea>
-                    <p class="field-note">위 웹 서비스 목록에 있는 이름을 사용하세요. 빈 배열 []은 모든 서비스의 파일·TCP 규칙을 끕니다. 선택을 해제하면 호스트 YAML을 사용합니다.</p>
-                  </div>
-                </details></fieldset>
-              <fieldset><legend>대응 방식·안전 조건</legend><div class="form-grid three"><div class="field"><label for="responseMode">대응 방식</label><select id="responseMode"><option value="observe">탐지 전용 (observe)</option><option value="would_block">모의 대응 (would_block)</option><option value="enforce">자동 종료 (enforce)</option></select></div><div class="field"><label for="responseAction">대응 동작</label><select id="responseAction"><option value="none">동작 없음</option><option value="terminate">프로세스 종료</option></select></div><div class="field"><label for="riskThreshold">최소 위험 점수 (0–100)</label><input id="riskThreshold" type="number" min="0" max="100" step="1" required></div><div class="field"><label for="minConfidence">최소 신뢰도 (0–1)</label><input id="minConfidence" type="number" min="0" max="1" step="0.01" required></div><div class="field capability-field"><label id="requiredCapabilitiesLabel">대응에 필요한 기능</label><div id="requiredCapabilitiesEditor" aria-labelledby="requiredCapabilitiesLabel"></div><textarea id="requiredCapabilities" hidden aria-label="필수 기능 조건 동기화 값"></textarea></div></div><p id="responseHelp" class="inline-note">탐지 전용은 프로세스를 종료하지 않습니다.</p></fieldset>
-                <details class="editor-section"><summary>에이전트 제거와 정책 유효 기간</summary>
+                </fieldset>
+                <p id="responseHelp" class="notice warning" role="status" hidden></p>
+                <fieldset id="responseConditions"><legend>대응 조건</legend>
                   <div class="form-grid">
-                    <div class="field"><label for="uninstallMode">제거 정책</label><select id="uninstallMode"><option value="approval_required">중앙 승인 필요</option><option value="allow">제거 허용</option><option value="deny">일반 제거 금지</option></select></div>
-                    <div class="field"><label for="validityHours">정책 유효 기간 (시간)</label><input id="validityHours" type="number" min="1" max="8760" required></div>
+                    <div class="field"><label for="riskThreshold">최소 위험 점수 (0–100)</label><input id="riskThreshold" type="number" min="0" max="100" step="1" inputmode="numeric"><small>이 점수 이상인 탐지만 대응합니다.</small></div>
+                    <div class="field"><label for="minConfidence">최소 신뢰도 (0–1)</label><input id="minConfidence" type="number" min="0" max="1" step="0.01" inputmode="decimal"><small>이 신뢰도 이상인 탐지만 대응합니다.</small></div>
                   </div>
-                  <p class="field-note">관리형 에이전트의 일반 제거에는 일회용 중앙 승인이 필요합니다. 유효 기간은 배포 시점부터 계산하며, 기한이 지나면 기존 탐지를 유지하고 자동 대응을 중단합니다.</p>
-                </details>
-                <details class="editor-section"><summary>에이전트 파일 무결성</summary>
-                  <label><input id="integrityPackageFiles" type="checkbox"> 에이전트 패키지 파일·사이트 설정·서명 정책 측정</label>
-                  <label for="integrityConfigSHA">승인한 사이트 YAML의 SHA-256</label><input id="integrityConfigSHA" maxlength="64" spellcheck="false">
-                  <p class="field-note">새 정책 리비전을 배포하면 실행 파일 4개와 systemd 유닛 3개의 측정값을 승인된 RPM과 비교합니다. 사이트 YAML은 기준값을 입력해야 일치 여부를 확인할 수 있습니다.</p>
-                </details>
-                <details class="editor-section"><summary>추가 무결성 초안 · 읽기 전용</summary>
-                  <p class="field-note">TPM 필수 조건, 임의 경로, 강제 무결성 검증은 중앙에 초안으로 보관합니다. 지원 에이전트가 수행하는 현재 검사는 위의 에이전트 파일 무결성에서 설정합니다.</p>
-                  <div id="integrityDraftSummary" class="field-note"></div>
-                </details>
+                  <div class="field capability-field"><label id="requiredCapabilitiesLabel">필요한 기능 (모두 확인되어야 대응)</label><div id="requiredCapabilitiesEditor" aria-labelledby="requiredCapabilitiesLabel"></div><textarea id="requiredCapabilities" hidden aria-label="필수 기능 조건 동기화 값"></textarea></div>
+                </fieldset>
+                <p id="responseConditionsOff" class="field-note">탐지 전용에서는 위험 점수·신뢰도·필요한 기능을 판정하지 않습니다. 저장된 조건은 그대로 보존됩니다.</p>
               </section>
-              <section aria-labelledby="agentConfigurationHeading">
-                <h3 id="agentConfigurationHeading">에이전트 설정 <span lang="en">Agent Configuration</span></h3>
+              <section id="policySection-services" class="policy-section" aria-label="서비스별 설정" hidden>
+                <datalist id="policyServiceNames"></datalist>
+                <section class="policy-subsection" aria-labelledby="appPolicyHeading">
+                  <div class="app-section-heading"><h3 id="appPolicyHeading">서비스별 정책 연결</h3><span id="appBindingCount"></span></div>
+                  <p class="panel-note">systemd 서비스에 저장된 다른 정책의 버전을 연결합니다. 연결된 서비스는 그 정책의 탐지·대응을 사용하고, 나머지는 이 정책으로 관찰합니다.</p>
+                  <div id="appBindingRows"></div>
+                  <fieldset class="app-binding-form"><legend id="appBindingLegend">서비스 연결</legend>
+                    <div class="app-binding-fields">
+                      <div class="field"><label for="appBindingService">시스템 서비스</label><input id="appBindingService" maxlength="255" spellcheck="false" list="policyServiceNames" placeholder="예: nginx.service"></div>
+                      <div class="field"><label for="appBindingSource">적용할 정책 버전</label><select id="appBindingSource"><option value="">저장된 정책 선택</option></select></div>
+                      <button id="appBindingAdd" type="button">연결 추가</button><button id="appBindingCancel" type="button" class="small quiet" hidden>취소</button>
+                    </div>
+                    <p id="appBindingHint" class="field-note"></p><p id="appBindingError" class="notice warning" role="alert" hidden></p>
+                  </fieldset>
+                </section>
+                <section class="policy-subsection" aria-labelledby="ruleControlsHeading">
+                  <div class="app-section-heading"><h3 id="ruleControlsHeading">서비스별 규칙과 임시 예외</h3><span id="ruleControlCount"></span></div>
+                  <p class="panel-note">특정 서비스에서 규칙을 끄거나 만료 시각까지 예외로 둡니다. 설정하지 않은 조합은 프로필의 기본 판정을 따릅니다.</p>
+                  <div id="ruleControlRows"></div>
+                  <button id="ruleControlAdd" type="button" class="small">+ 규칙 설정 추가</button>
+                </section>
+                <section class="policy-subsection" aria-labelledby="serviceScopesHeading">
+                  <div class="app-section-heading"><h3 id="serviceScopesHeading">서비스별 파일·TCP 범위</h3><span id="serviceScopeCount"></span></div>
+                  <label class="option-row"><input id="centralServiceScopes" type="checkbox"><span><strong>중앙 정책으로 범위 지정</strong><small>끄면 각 서버의 호스트 설정(YAML)에 있는 범위를 그대로 사용합니다. 켜면 아래 목록으로 호스트 설정을 교체합니다.</small></span></label>
+                  <div id="serviceScopeEditor">
+                    <p id="serviceScopeEmpty" class="notice warning" hidden>지정한 서비스가 없어 모든 서비스의 파일 쓰기·TCP 연결 규칙이 꺼집니다.</p>
+                    <div id="serviceScopeRows"></div>
+                    <button id="serviceScopeAdd" type="button" class="small">+ 서비스 범위 추가</button>
+                  </div>
+                </section>
+              </section>
+              <section id="policySection-agent" class="policy-section" aria-label="에이전트 설정" hidden>
                 <fieldset><legend>자원 모니터링</legend>
-                  <label class="check-label"><input id="monitoringEnabled" type="checkbox" checked>서버 자원 정보를 하트비트에 포함</label>
+                  <label class="option-row"><input id="monitoringEnabled" type="checkbox" checked><span><strong>서버 자원 정보를 하트비트에 포함</strong><small>끄면 자원 정보 수집만 멈추고 연결·정책 적용 상태는 계속 보고합니다.</small></span></label>
                   <div class="form-grid">
-                    <div class="field"><label for="sampleInterval">수집·하트비트 주기 (초)</label><input id="sampleInterval" type="number" min="5" max="3600" required aria-describedby="monitoringScope"></div>
-                    <div class="field"><label for="processLimit">한 번에 조회할 프로세스 수</label><input id="processLimit" type="number" min="1" max="2000" required aria-describedby="monitoringScope"></div>
+                    <div class="field"><label for="sampleInterval">수집·하트비트 주기 (초)</label><input id="sampleInterval" type="number" min="5" max="3600" inputmode="numeric" aria-describedby="monitoringScope"></div>
+                    <div class="field"><label for="processLimit">한 번에 조회할 프로세스 수</label><input id="processLimit" type="number" min="1" max="2000" inputmode="numeric" aria-describedby="monitoringScope"></div>
                   </div>
-                  <p class="field-note" id="monitoringScope">주기 5~3,600초, 프로세스 1~2,000개 범위에서 지정합니다. 모니터링을 끄면 자원 정보 수집을 중단하고 연결과 정책 적용 상태는 계속 보고합니다. 보고 간격이 2분 이상이면 센트럴에서 수신 지연으로 표시되거나 새 규칙의 지원을 확인할 수 없을 수 있습니다.</p>
+                  <p class="field-note" id="monitoringScope">주기 5~3,600초, 프로세스 1~2,000개. 보고 간격이 2분 이상이면 센트럴에서 수신 지연으로 표시될 수 있습니다.</p>
                 </fieldset>
+                <fieldset><legend>정책 유효 기간과 에이전트 제거</legend>
+                  <div class="form-grid">
+                    <div class="field"><label for="validityHours">정책 유효 기간 (시간)</label><input id="validityHours" type="number" min="1" max="8760" inputmode="numeric"><small>배포 시점부터 계산합니다. 기한이 지나면 탐지는 유지하고 자동 대응을 멈춥니다.</small></div>
+                    <div class="field"><label for="uninstallMode">에이전트 제거</label><select id="uninstallMode"><option value="approval_required">중앙 승인 필요</option><option value="allow">제거 허용</option><option value="deny">일반 제거 금지</option></select><small>관리형 에이전트의 일반 제거에는 일회용 중앙 승인이 필요합니다.</small></div>
+                  </div>
+                </fieldset>
+                <fieldset><legend>에이전트 파일 무결성</legend>
+                  <label class="option-row"><input id="integrityPackageFiles" type="checkbox"><span><strong>에이전트 패키지 파일·사이트 설정·서명 정책 측정</strong><small>배포 후 실행 파일 4개와 systemd 유닛 3개를 승인된 RPM과 비교합니다. 결과는 에이전트 상세에서 확인합니다.</small></span></label>
+                  <div id="integrityConfigField" class="field nested-field"><label for="integrityConfigSHA">승인한 사이트 YAML의 SHA-256 (선택)</label><input id="integrityConfigSHA" maxlength="64" spellcheck="false" autocomplete="off"><small>입력하면 사이트 YAML의 일치 여부도 확인합니다.</small></div>
+                </fieldset>
+                <div id="integrityDraftNotice" class="inline-note" hidden><strong>보관 중인 추가 무결성 초안</strong> · TPM 조건·임의 경로·강제 검증은 중앙에만 보관하며 현재 에이전트에 적용되지 않습니다. 저장해도 그대로 유지됩니다.<div id="integrityDraftSummary"></div></div>
               </section>
-              <div class="form-actions sticky-actions"><button type="submit" class="primary">템플릿 저장</button><button id="deleteTemplate" type="button" class="danger quiet" disabled>삭제</button><span id="templateDirty" class="muted"></span></div>
+              <div class="policy-save-bar">
+                <button type="submit" class="primary">정책 저장</button><button id="revertTemplate" type="button" class="quiet" disabled>변경 취소</button>
+                <span id="templateDirty" class="save-state"></span>
+                <p id="templateFormError" class="save-error" role="alert" hidden></p>
+              </div>
             </form>
+            <section id="policySection-usage" class="policy-section" aria-label="사용처" hidden>
+              <div id="templateUsage">
+                <p class="panel-note">현재 등록에 이 정책을 지정한 호스트와 서비스입니다. 모든 버전을 포함합니다.</p>
+                <div id="templateUsageReport"></div>
+                <div class="form-actions"><button id="templateUsagePrevious" type="button" class="small">이전 구간</button><button id="templateUsageNext" type="button" class="small">다음 구간</button><button id="templateUsageReload" type="button" class="small quiet">다시 조회</button></div>
+              </div>
+            </section>
           </section>
         </div>
         <div id="policyAssignmentsPane" hidden>
-          <section class="panel" aria-labelledby="appliedPolicyTitle">
-            <div class="panel-head"><h2 id="appliedPolicyTitle">에이전트별 적용 정책</h2><button id="reloadAppliedPolicies" type="button" class="small" disabled>다시 조회</button></div>
-            <div class="field"><label for="appliedPolicyAgent">에이전트</label><select id="appliedPolicyAgent"><option value="">에이전트를 선택하세요</option></select></div>
+          <section class="panel" aria-labelledby="assignmentHeading">
+            <div class="panel-head"><h2 id="assignmentHeading">에이전트별 적용 현황 <span id="assignmentCount" class="catalog-count"></span></h2></div>
+            <div id="assignmentSummary" class="assignment-summary" role="group" aria-label="상태별 빠른 필터"></div>
+            <div class="filter-bar">
+              <div class="field grow"><label for="assignmentSearch">에이전트·호스트 검색</label><input id="assignmentSearch" type="search" maxlength="200" placeholder="서버 ID 또는 호스트명"></div>
+              <div class="field"><label for="assignmentPolicyFilter">지정 정책</label><select id="assignmentPolicyFilter"><option value="">전체 정책</option></select></div>
+              <div class="field"><label for="assignmentStateFilter">상태</label><select id="assignmentStateFilter"><option value="">전체 상태</option><option value="applied">적용 완료</option><option value="pending">적용 대기</option><option value="error">오류</option><option value="unknown">확인 필요</option><option value="outdated">재배포 필요</option><option value="none">정책 없음</option></select></div>
+            </div>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="에이전트별 정책 적용 현황"><table class="assignment-table"><caption class="sr-only">에이전트별 지정 정책과 적용 보고</caption><thead><tr><th scope="col"><input id="assignmentSelectAll" type="checkbox" aria-label="표시된 에이전트 모두 선택"></th><th scope="col">에이전트 / 호스트</th><th scope="col">지정 정책</th><th scope="col">적용 상태</th><th scope="col">적용 / 목표 리비전</th><th scope="col">최근 하트비트</th><th scope="col">상세</th></tr></thead><tbody id="assignmentRows"></tbody></table></div>
+            <div class="form-actions"><span id="assignmentSelection" class="muted"></span><button id="assignmentDeploy" type="button" class="primary small" disabled>선택한 에이전트에 배포…</button></div>
+          </section>
+          <section id="appliedPolicyPanel" class="panel" aria-labelledby="appliedPolicyTitle" hidden>
+            <div class="panel-head"><h2 id="appliedPolicyTitle" tabindex="-1">적용 상세</h2><div class="form-actions"><button id="openAgentDetail" type="button" class="small quiet">에이전트 상세 열기</button><button id="reloadAppliedPolicies" type="button" class="small" disabled>다시 조회</button></div></div>
             <div id="appliedPolicyReport"></div>
           </section>
-        <section class="panel" aria-labelledby="hostBoundaryHeading">
-          <div class="panel-head"><h2 id="hostBoundaryHeading">호스트 보안 경계 <span lang="en">Host Security Boundary</span></h2><span class="tag neutral">조회 전용</span></div>
-          <p class="panel-note">에이전트는 등록 시 받은 키로 정책 서명과 대상 등록을 확인합니다. 아래에는 중앙의 등록 기록과 선택한 호스트가 보고한 상태를 표시합니다.</p>
-          <div class="field"><label for="hostBoundaryAgent">보고를 조회할 에이전트</label><select id="hostBoundaryAgent"><option value="">에이전트를 선택하세요</option></select></div>
-          <div id="hostBoundaryReport"></div>
-          <p class="field-note">호스트의 신뢰 CA, 정책·업데이트 검증 키, root 작업자 권한, 복구 승인 정보, 중앙 연결 주소, SELinux 모드는 하트비트에 미보고됩니다.</p>
-        </section>
         </div>
         <div id="policyDeploymentPane" hidden>
-        <section class="panel deployment-panel"><div class="panel-head"><h2>저장한 정책 배포</h2><span class="tag neutral">명시적 승인</span></div><form id="previewForm"><div class="field"><label for="deployTemplate">배포할 템플릿</label><select id="deployTemplate" required><option value="">템플릿을 선택하세요</option></select></div><div class="form-grid"><fieldset><legend>대상 그룹</legend><div id="deployGroups" class="selection-box"></div></fieldset><fieldset><legend>개별 에이전트</legend><div id="deployAgents" class="selection-box"></div></fieldset></div><p class="field-note">그룹과 개별 선택의 합집합에 배포합니다. 중복 대상은 한 번만 포함됩니다.</p><button id="previewButton" class="primary" type="submit">배포 미리보기</button></form><div id="deploymentPreview" hidden><div class="panel-head"><h3>배포 내용 확인</h3><span id="previewTargetCount" class="tag neutral"></span></div><div id="previewWarnings"></div><div id="previewTargets" class="table-scroll"></div><div id="trialStart" class="form-actions"></div><p class="inline-note">배포 후 에이전트가 서명된 정책을 수신하고 적용 상태를 보고합니다. 대상·등록·현재 정책이 변경되면 새 미리보기가 필요합니다.</p><label class="check-label"><input id="deployConfirm" type="checkbox">대상과 대응 방식을 확인했으며 이 정책을 배포합니다.</label><div class="form-actions"><button id="deployButton" type="button" class="primary" disabled>확인한 대상에 배포</button><button id="cancelPreview" type="button">미리보기 취소</button></div></div></section>
-        <section id="trialPanel" class="panel"><div class="panel-head"><h2>정책 영향 비교와 단계 배포</h2><button id="loadTrials" type="button">저장된 배포 조회</button></div><div id="trialList"></div><div id="trialDetail"></div></section>
+          <section class="panel deployment-panel" aria-labelledby="deployHeading"><div class="panel-head"><h2 id="deployHeading" tabindex="-1">정책 배포</h2><span class="tag neutral">미리보기 후 확정</span></div>
+            <form id="previewForm" novalidate>
+              <div class="deploy-step"><h3><span class="step-no" aria-hidden="true">1</span>배포할 정책</h3>
+                <div class="field"><label for="deployTemplate">정책</label><select id="deployTemplate" required><option value="">정책을 선택하세요</option></select></div>
+                <div id="deployTemplateSummary" class="deploy-summary"></div>
+              </div>
+              <div class="deploy-step"><h3><span class="step-no" aria-hidden="true">2</span>배포 대상</h3>
+                <div class="form-grid">
+                  <fieldset><legend>서버 그룹</legend><div id="deployGroups" class="selection-box"></div></fieldset>
+                  <fieldset><legend>개별 에이전트</legend>
+                    <div class="selection-tools"><input id="deployAgentSearch" type="search" maxlength="200" placeholder="에이전트·호스트 검색" aria-label="배포 대상 에이전트 검색"><button id="deploySelectVisible" type="button" class="small quiet">표시된 대상 선택</button><button id="deployClearAgents" type="button" class="small quiet">선택 해제</button></div>
+                    <div id="deployAgents" class="selection-box"></div>
+                  </fieldset>
+                </div>
+                <p id="deploySelectionCount" class="field-note" aria-live="polite"></p>
+              </div>
+              <button id="previewButton" class="primary" type="submit">배포 미리보기</button>
+            </form>
+            <div id="deploymentPreview" hidden>
+              <div class="panel-head"><h3><span class="step-no" aria-hidden="true">3</span>변경 내용 확인</h3><span id="previewTargetCount" class="tag neutral"></span></div>
+              <div id="previewWarnings"></div>
+              <div id="previewChanges"></div>
+              <h4 class="policy-subheading">대상별 리비전과 확인 사항</h4>
+              <div id="previewTargets" class="table-scroll"></div>
+              <div id="trialStart" class="form-actions"></div>
+              <p class="inline-note">배포 후 에이전트가 서명된 정책을 받아 적용 상태를 보고합니다. 대상·등록·현재 정책이 바뀌면 미리보기를 다시 만들어야 합니다.</p>
+              <label class="check-label"><input id="deployConfirm" type="checkbox">대상과 변경 내용을 확인했으며 이 정책을 배포합니다.</label>
+              <div class="form-actions"><button id="deployButton" type="button" class="primary" disabled>확인한 대상에 배포</button><button id="cancelPreview" type="button">미리보기 취소</button></div>
+            </div>
+          </section>
+          <section id="trialPanel" class="panel"><div class="panel-head"><h2>단계 배포 <small class="catalog-count">한 대 선행 배포와 영향 비교</small></h2><button id="loadTrials" type="button" class="small">새로 조회</button></div><div id="trialList"></div><div id="trialDetail"></div></section>
         </div>
       </section>
 

@@ -15,7 +15,7 @@
       const legend = C.el("legend","sr-only","조회 권한: 편집할 수 없습니다.");
       fieldset.append(legend,...form.childNodes);form.append(fieldset);
     }
-    for (const id of ["newGroup","newTemplate","deployButton","deployConfirm"]) { const node=C.id(id);if(node)node.disabled=true; }
+    for (const id of ["newGroup","newTemplate","duplicateTemplate","deleteTemplate","deployFromEditor","assignmentDeploy","deployButton","deployConfirm"]) { const node=C.id(id);if(node)node.disabled=true; }
     for (const id of ["groups","policies","approvals"]) {
       const section=C.id(`view-${id}`);
       if(section&&!section.querySelector(".access-note"))section.prepend(C.el("p","inline-note access-note","조회 권한으로 접속했습니다. 변경·배포·승인은 운영자 또는 관리자에게 요청하세요."));

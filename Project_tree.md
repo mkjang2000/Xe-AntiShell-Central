@@ -25,6 +25,7 @@ Xe-AntiShell-Central/
 │   ├── policy_trial*.go         # Bound local comparisons, single-agent rollout, promotion and recovery
 │   ├── application_bindings.go   # Resolve template versions into signed service policies
 │   ├── application_status.go     # Match reported revisions and digests to immutable policies
+│   ├── console_assignments.go    # Template behind each desired revision and preview current-policy groups
 │   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
 │   ├── delivery_receipts.go      # Compact per-stream replay checks and schema 4 cursor migration
 │   ├── capacity.go               # On-demand read-only storage and expiry statistics
@@ -48,9 +49,13 @@ Xe-AntiShell-Central/
 │   ├── accounts_auth.go          # Per-request identity and role authorization
 │   ├── accounts_http.go          # Account/password administration APIs
 │   └── assets/                    # Korean fleet, policies, histories and dark/light themes
-│       ├── application-policies.js # Policy catalog, workspace navigation and service bindings
-│       ├── applied-policies.js    # Agent policy revisions and server-confirmed snapshots
-│       ├── host-boundary.js      # Read-only registration and host security capability evidence
+│       ├── policy.js             # Sectioned policy editor, save bar, duplicate and deployment steps
+│       ├── policy-services.js    # Row editors for per-service rule controls and file/TCP scopes
+│       ├── policy-diff.js        # Current-versus-deployed setting comparison for previews
+│       ├── policy-editor.css     # Policy workspace layout, mode cards and fleet table
+│       ├── application-policies.js # Workspace navigation and service policy bindings
+│       ├── applied-policies.js    # Fleet policy table and server-confirmed applied snapshots
+│       ├── host-boundary.js      # Agent-detail registration and host security capability evidence
 │       ├── file-integrity.js     # Operator file measurement details and comparison digests
 │       ├── privilege.js          # Root/credential findings and bounded before/after evidence presentation
 │       ├── accounts.js           # Compact account list, dialogs and permission help
@@ -83,6 +88,7 @@ Xe-AntiShell-Central/
 │   ├── plans/password-policy.md
 │   ├── plans/policy-and-agent-configuration.md
 │   ├── plans/application-policies.md
+│   ├── plans/policy-console-redesign.md
 │   └── analysis/managed-v1-operations.md
 ├── third_party/licenses/          # Preserved upstream license texts
 ├── install.sh                    # Explicit source/local-RPM installation

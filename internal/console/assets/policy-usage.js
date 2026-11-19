@@ -1,7 +1,7 @@
 "use strict";
 
 (function (C) {
-  let id = "", version = 0, turn = 0, page = 0, cursors = [""], next = "", loaded = false;
+  let id = "", version = 0, turn = 0, page = 0, cursors = [""], next = "", loaded = false, visible = false;
   const node = name => C.id(name);
   function controls(busy) {
     node("templateUsagePrevious").disabled = busy || page === 0;
@@ -9,7 +9,7 @@
     node("templateUsageReload").disabled = busy;
   }
   async function load() {
-    if (!id || !node("templateUsage").open) return;
+    if (!id || !visible) return;
     const generation = ++turn, target = node("templateUsageReport");
     loaded = false; next = "";
     controls(true);
@@ -48,7 +48,6 @@
     }
   }
   C.initPolicyUsage = () => {
-    node("templateUsage").addEventListener("toggle",() => { if (!loaded && node("templateUsage").open) load(); });
     node("templateUsagePrevious").addEventListener("click",() => { if(page) { page--; load(); } });
     node("templateUsageNext").addEventListener("click",() => { if(next) { cursors[++page]=next; load(); } });
     node("templateUsageReload").addEventListener("click",() => { page=0; cursors=[""]; load(); });
@@ -56,9 +55,13 @@
   C.selectPolicyUsage = (selected, rev) => {
     if (selected === id && rev === version) return;
     id = selected; version = rev; turn++; page = 0; cursors = [""]; next = ""; loaded = false;
-    node("templateUsage").hidden = !id;
     node("templateUsageReport").replaceChildren();
     controls(false);
-    if (node("templateUsage").open) load();
+    if (visible) load();
+  };
+  // The usage tab loads on first display and keeps its page until the policy changes.
+  C.showPolicyUsage = shown => {
+    visible = Boolean(shown);
+    if (visible && !loaded) load();
   };
 })(globalThis.XEC);

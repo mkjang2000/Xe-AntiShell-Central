@@ -166,21 +166,37 @@ func (s *Server) consoleState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pending := make(map[string][]string)
-	rows, err = tx.QueryContext(r.Context(), `SELECT a.agent_id,s.settings_json,EXISTS(SELECT 1 FROM integrity_file_reports f WHERE (f.agent_id,f.enrollment_id,f.revision)=(s.agent_id,s.enrollment_id,s.revision)) FROM agents a JOIN console_policy_settings s
-ON a.agent_id=s.agent_id AND a.enrollment_id=s.enrollment_id AND a.desired_policy_revision=s.revision ORDER BY a.agent_id LIMIT 1000`)
+	assignments := make(map[string]consoleAssignment)
+	latest := make(map[string][]byte, len(templates))
+	for _, template := range templates {
+		if latest[template.ID], err = json.Marshal(template.Settings); err != nil {
+			break
+		}
+	}
+	if err == nil {
+		rows, err = tx.QueryContext(r.Context(), `SELECT a.agent_id,s.settings_json,EXISTS(SELECT 1 FROM integrity_file_reports f WHERE (f.agent_id,f.enrollment_id,f.revision)=(s.agent_id,s.enrollment_id,s.revision)),
+COALESCE(json_extract(CAST(p.signed_json AS TEXT),'$.policy.policy_id'),'') FROM agents a JOIN console_policy_settings s
+ON a.agent_id=s.agent_id AND a.enrollment_id=s.enrollment_id AND a.desired_policy_revision=s.revision
+LEFT JOIN policies p ON (p.agent_id,p.enrollment_id,p.revision)=(s.agent_id,s.enrollment_id,s.revision) ORDER BY a.agent_id LIMIT 1000`)
+	}
 	if err == nil {
 		for rows.Next() {
-			var id string
+			var id, policyID string
 			var body []byte
 			var settings ConsoleSettings
 			var measured bool
-			if err = rows.Scan(&id, &body, &measured); err != nil {
+			if err = rows.Scan(&id, &body, &measured, &policyID); err != nil {
 				break
 			}
 			if err = json.Unmarshal(body, &settings); err != nil {
 				break
 			}
 			pending[id] = consolePendingWithMeasurement(settings, measured)
+			var assignment consoleAssignment
+			if assignment, err = assignedTemplate(policyID, settings, latest); err != nil {
+				break
+			}
+			assignments[id] = assignment
 		}
 		if err == nil {
 			err = rows.Err()
@@ -195,6 +211,7 @@ ON a.agent_id=s.agent_id AND a.enrollment_id=s.enrollment_id AND a.desired_polic
 	type consoleAgent struct {
 		Agent
 		PendingFeatures []string `json:"pending_features"`
+		consoleAssignment
 	}
 	consoleAgents := make([]consoleAgent, 0, len(agents))
 	for _, agent := range agents {
@@ -202,7 +219,7 @@ ON a.agent_id=s.agent_id AND a.enrollment_id=s.enrollment_id AND a.desired_polic
 		if features == nil {
 			features = []string{}
 		}
-		consoleAgents = append(consoleAgents, consoleAgent{Agent: agent, PendingFeatures: features})
+		consoleAgents = append(consoleAgents, consoleAgent{Agent: agent, PendingFeatures: features, consoleAssignment: assignments[agent.ID]})
 	}
 	now := s.now().UTC()
 	_ = tx.Rollback()

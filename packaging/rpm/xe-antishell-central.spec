@@ -1,6 +1,6 @@
 Name:           xe-antishell-central
 Version:        0.1.0
-Release:        23%{?dist}
+Release:        24%{?dist}
 Summary:        Independent Xe-AntiShell central management service
 License:        MIT AND Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND BSD-1-Clause AND SunPro
 URL:            https://github.com/mkjang2000/Xe-AntiShell-Central

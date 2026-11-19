@@ -7,29 +7,21 @@ const source = name => fs.readFileSync(new URL(name, import.meta.url), "utf8");
 const now = "2026-11-19T01:00:00Z";
 
 function render({agent = {}, heartbeat = {}, cap} = {}) {
-  const select = {value: "web", addEventListener(_, callback) { this.change = callback; }};
-  const report = {replaceChildren(content) { this.content = content; }};
-  const document = {getElementById: id => ({hostBoundaryAgent: select, hostBoundaryReport: report})[id]};
-  const context = vm.createContext({document});
+  const context = vm.createContext({});
   vm.runInContext(source("model.js"), context);
   const C = context.XEC;
   C.now = () => Date.parse(now);
-  C.options = () => {};
-  C.facts = Object.fromEntries;
-  C.empty = value => value;
-  C.state.agents = [{
+  const record = {
     agent_id: "web", enrollment_id: "web-registration", desired_policy_revision: 5,
     heartbeat: {
       agent_id: "web", enrollment_id: "web-registration", sent_at: now,
       policy_status: {result: "applied", active_revision: 4},
       status: {capability_report: {capabilities: {"response.terminate": cap}}}, ...heartbeat
     }, ...agent
-  }];
+  };
   vm.runInContext(source("host-boundary.js"), context);
-  assert.equal(C.listeners.length, 1);
-  C.listeners[0]();
-  select.change();
-  return report.content;
+  assert.equal(C.listeners.length, 0, "the agent detail renders host facts; no separate selector");
+  return Object.fromEntries(C.hostBoundaryFacts(record));
 }
 
 const available = {provider: "pidfd", state: "supported", implementation: "implemented", runtime_state: "available"};

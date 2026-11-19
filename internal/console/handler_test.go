@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -242,6 +243,26 @@ func TestAssetsCannotExposeEmbeddedHTMLOrDevelopmentFiles(t *testing.T) {
 		s.ServeHTTP(w, r)
 		if w.Code != http.StatusNotFound {
 			t.Fatalf("asset %s: status=%d", endpoint, w.Code)
+		}
+	}
+}
+
+func TestEveryPageAssetIsServed(t *testing.T) {
+	s, _ := testServer(t)
+	page, err := assets.ReadFile("assets/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	references := regexp.MustCompile(`(?:src|href)="(/assets/[^"]+)"`).FindAllStringSubmatch(string(page), -1)
+	if len(references) < 10 {
+		t.Fatalf("index.html asset references=%d", len(references))
+	}
+	for _, reference := range references {
+		r := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:9090"+reference[1], nil)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != http.StatusOK || w.Body.Len() == 0 {
+			t.Fatalf("index.html references %s but it is not served: status=%d", reference[1], w.Code)
 		}
 	}
 }

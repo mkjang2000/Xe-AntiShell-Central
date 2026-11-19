@@ -61,10 +61,32 @@ test("exact applied evidence is independent from desired and legacy never proves
   const second=C.policyIdentity(a);a.heartbeat.sent_at="2026-11-19T12:00:01Z";assert.equal(C.policyIdentity(a),second);
 });
 test("usage pagination supports empty scan windows and always reads the selected immutable request",async()=>{
-  const C=harness(), calls=[];C.initPolicyUsage();C.id("templateUsage").open=true;
+  const C=harness(), calls=[];C.initPolicyUsage();C.showPolicyUsage(true);
   C.request=async url=>{calls.push(url);return calls.length===1?{items:[],next_after:"a"}:{items:[{agent_id:"b",desired_revision:3,bindings:[ref],application_status:{state:"previous"}}]};};
   C.selectPolicyUsage("app",2);await new Promise(r=>setImmediate(r));
   assert.equal(C.id("templateUsageNext").disabled,false);
   C.id("templateUsageNext").fire("click");await new Promise(r=>setImmediate(r));
   assert.match(calls[1],/after=a/);assert.match(walk(C.id("templateUsageReport")),/nginx.service/);
+});
+test("fleet table counts, filters and hands selected outdated hosts to deployment",()=>{
+  const C=harness(), now="2026-11-19T12:00:00Z", deployed=[];
+  const agent=(id,desired,active,policy,state)=>({agent_id:id,enrollment_id:id+"-e",hostname:id+".example",desired_policy_revision:desired,desired_policy_id:policy,policy_template_state:state,
+    heartbeat:{agent_id:id,enrollment_id:id+"-e",sent_at:now,policy_status:{result:"applied",active_revision:active}}});
+  C.state.templates=[{id:"web",name:"웹 정책",version:3,settings}];
+  C.state.agents=[agent("a",2,2,"web","current"),agent("b",2,1,"web","changed"),agent("c",0,0),{...agent("d",4,4,"web","current"),revoked:true}];
+  C.startDeployment=request=>deployed.push(request);
+  C.initAppliedPolicies();C.renderAssignments();
+  const rows=()=>C.id("assignmentRows").children;
+  assert.equal(rows().length,3,"revoked registrations are not deployment targets");
+  assert.match(walk(C.id("assignmentSummary")),/적용 완료 1.*적용 대기 1.*정책 없음 1.*재배포 필요 1/s);
+  assert.match(walk(rows()[1]),/웹 정책 · web.*저장본 변경됨 · 재배포 필요/s);
+  C.id("assignmentStateFilter").value="outdated";C.renderAssignments();
+  assert.equal(rows().length,1);assert.match(walk(rows()[0]),/b\.example/);
+  assert.equal(C.id("assignmentDeploy").disabled,true);
+  const pick=rows()[0].children[0].children[0];pick.checked=true;pick.fire("change");
+  assert.equal(C.id("assignmentDeploy").disabled,false);
+  C.id("assignmentDeploy").fire("click");
+  assert.deepEqual(plain(deployed),[{templateID:"web",agentIDs:["b"]}]);
+  C.id("assignmentStateFilter").value="";C.id("assignmentPolicyFilter").value="-";C.renderAssignments();
+  assert.equal(rows().length,1);assert.match(walk(rows()[0]),/중앙 정책 없음/);
 });

@@ -103,8 +103,9 @@ func (settings ConsoleSettings) validate() error {
 		seen[path] = true
 	}
 	policy := settings.wirePolicy("validation", "validation", "validation", 1, time.Unix(1, 0).UTC())
-	if policy.Validate() != nil {
-		return fmt.Errorf("%w: 탐지·대응·삭제 또는 모니터링 설정을 확인하세요", ErrInvalid)
+	if err := policy.Validate(); err != nil {
+		// The protocol reason names the rejected field for the operator.
+		return fmt.Errorf("%w: 탐지·대응·삭제 또는 모니터링 설정을 확인하세요 (%v)", ErrInvalid, err)
 	}
 	body, err := json.Marshal(policy)
 	if err != nil || len(body) > managed.MaxPolicyBytes-1024 {

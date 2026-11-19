@@ -34,7 +34,7 @@
     });
     C.id("attentionList").replaceChildren(...(attentionRows.length ? attentionRows : [C.empty(active.length ? "현재 기준에 해당하는 서버가 없습니다." : "등록된 에이전트가 없습니다. 등록 토큰을 발급해 서버를 연결하세요.")]));
     const pending = C.state.templates.filter(t => C.object(C.object(t.settings).integrity).enabled).length;
-    C.id("policyOverview").replaceWith(Object.assign(C.facts([["저장된 템플릿", `${C.state.templates.length}개`], ["서버 그룹", `${C.state.groups.length}개`], ["중앙 정책 미지정", `${active.length - assigned.length}대`], ["무결성 초안 활성", `${pending}개 템플릿 · 에이전트 미적용`]]), {id: "policyOverview"}));
+    C.id("policyOverview").replaceWith(Object.assign(C.facts([["저장된 정책", `${C.state.templates.length}개`], ["서버 그룹", `${C.state.groups.length}개`], ["중앙 정책 미지정", `${active.length - assigned.length}대`], ["무결성 초안 활성", `${pending}개 템플릿 · 에이전트 미적용`]]), {id: "policyOverview"}));
   };
   C.renderAgents = () => {
     const search = C.id("agentSearch").value.trim().toLowerCase(), filter = C.id("agentStatusFilter").value;
@@ -129,7 +129,14 @@
     if (C.agentApplicationPolicies) container.append(C.agentApplicationPolicies(agent, fleet.policy));
     if (C.array(fleet.policy.pending_features).includes("integrity")) container.append(C.el("p", "notice warning", "추가 무결성 설정(TPM·임의 경로·강제 검증)은 중앙 초안에 보관합니다."));
     container.append(C.button("이 서버 정책으로 새 정책 작성", () => C.editTemplateFromPolicy(policy, fleet.policy.desired_settings), "primary small"));
-    container.append(C.el("p", "panel-note", "현재 지정 정책을 복사하여 새 템플릿을 작성합니다. 저장·배포 전에는 서버 설정이 바뀌지 않습니다."), C.raw(policy, "지정된 정책 전체 보기"));
+    container.append(C.el("p", "panel-note", "현재 지정 정책을 복사하여 새 정책을 작성합니다. 저장·배포 전에는 서버 설정이 바뀌지 않습니다."), C.raw(policy, "지정된 정책 전체 보기"));
+  };
+  const hostBoundary = (agent, container) => {
+    if (!C.hostBoundaryFacts) return;
+    container.append(heading("호스트 보안 경계", C.tag("조회 전용", "neutral")),
+      C.el("p", "panel-note", "에이전트는 등록 시 받은 키로 정책 서명과 대상 등록을 확인합니다. 중앙 등록 기록과 이 호스트가 보고한 상태입니다."),
+      C.facts(C.hostBoundaryFacts(agent)),
+      C.el("p", "field-note", "호스트의 신뢰 CA, 정책·업데이트 검증 키, root 작업자 권한, 복구 승인 정보, 중앙 연결 주소, SELinux 모드는 하트비트에 보고되지 않습니다."));
   };
   const loadPolicy = async agent => {
     const key = C.policyIdentity(agent);
@@ -163,7 +170,7 @@
     actions.append(C.button("이 서버 이력 조회", () => { C.id("historyAgent").value = agent.agent_id; root.location.hash = "history"; C.loadHistory(true); }, "small"));
     if (!agent.revoked) actions.append(C.button("제거 승인으로 이동", () => { C.id("removalAgent").value = agent.agent_id; C.populateRemoval(); root.location.hash = "approvals"; }, "small"));
     content.append(actions);
-    assignedPolicy(agent, content); C.fileIntegrity(agent, content); resourceDetails(agent, content); capabilities(agent, content);
+    assignedPolicy(agent, content); hostBoundary(agent, content); C.fileIntegrity(agent, content); resourceDetails(agent, content); capabilities(agent, content);
     content.append(C.raw(hb, "하트비트 보고 원문 보기"));
     C.id("agentDetailBody").replaceChildren(content);
     if (focus) for (const button of C.id("agentDetailBody").querySelectorAll("button,summary")) if (button.textContent === focus) { button.focus({preventScroll: true}); break; }

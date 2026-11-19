@@ -36,14 +36,6 @@
 .template-sidebar .select-list { max-height: 68vh; overflow-y: auto; }
 .template-sidebar .select-item { overflow-wrap: anywhere; }
 .template-sidebar .select-item .tag { margin-top: 5px; }
-.app-policy-editor {
-  margin: 20px 0;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-inline-start: 3px solid var(--blue);
-  border-radius: 4px;
-  background: var(--surface);
-}
 .app-section-heading, .app-binding-actions {
   display: flex;
   align-items: center;
@@ -51,7 +43,6 @@
 }
 .app-section-heading { justify-content: space-between; }
 .app-section-heading > h3 { margin: 0; font-size: 15px; }
-.app-policy-editor .panel-note { margin: 5px 0 12px; }
 .app-binding-empty { margin: 0; padding: 10px 0; color: var(--muted); }
 .app-binding-row {
   display: grid;
@@ -86,7 +77,6 @@
   .policy-workspace-nav { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); width: 100%; }
   .policy-workspace-nav button { padding: 6px 3px; line-height: 1.4; }
   .template-sidebar .select-list { max-height: 16rem; }
-  .app-policy-editor { padding: 12px; }
   .app-binding-row { grid-template-columns: minmax(0,1fr) auto; }
   .app-binding-actions { grid-column: 1 / -1; }
   .app-binding-fields .field { flex-basis: 100%; }

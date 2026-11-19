@@ -28,7 +28,7 @@
   async function show(id){
     const generation=++displayGeneration,path=base+"/"+encodeURIComponent(id),s=await C.request(path);if(generation!==displayGeneration)return;
     const body=C.id("trialDetail"),view=C.el("div"),t=s.trial;body.replaceChildren(view);
-    view.append(C.facts([["단계",phases[t.phase]],["선행 호스트",t.canary],["템플릿",`${s.template_id} v${s.template_version}`],["비교 평가 시각",C.time(s.evaluated_at)]]));
+    view.append(C.facts([["단계",phases[t.phase]],["선행 호스트",t.canary],["정책",`${s.template_id} v${s.template_version}`],["비교 평가 시각",C.time(s.evaluated_at)]]));
     view.append(C.table("호스트별 실제 정책 적용",["호스트","기준","기대","중앙 목표","실제 적용","보고 상태","비교"],s.targets.map(a=>[a.agent_id,a.baseline,a.expected,a.desired,a.active,states[a.state],a.compared?"등록됨":"대기"])));
     const hosts=C.el("select"),result=C.el("div");for(const a of s.targets){const o=C.el("option","",a.agent_id);o.value=a.agent_id;hosts.append(o);}hosts.addEventListener("change",()=>result.replaceChildren());
     const query=view=>path+"?"+new URLSearchParams({agent_id:hosts.value,view});
@@ -59,9 +59,12 @@
   }
   C.initPolicyTrials=()=>{
     const list=C.id("trialList"),refresh=C.id("loadTrials");if(!list||!refresh)return;
-    refresh.addEventListener("click",()=>C.run(refresh,async()=>{
+    const load=async()=>{
       const trials=await C.request(base);list.replaceChildren(...trials.map(t=>button(`${t.canary} · ${phases[t.phase]} · ${t.id}`,()=>show(t.id))));
-      if(!trials.length)list.append(C.empty("저장된 단계 배포가 없습니다."));
-    }));
+      if(!trials.length)list.append(C.empty("저장된 단계 배포가 없습니다. 배포 미리보기에서 선행 호스트를 골라 시작할 수 있습니다."));
+    };
+    refresh.addEventListener("click",()=>C.run(refresh,load));
+    // The deployment tab lists saved trials as soon as it opens.
+    C.loadPolicyTrials=()=>C.run(refresh,load);
   };
 })(globalThis.XEC);

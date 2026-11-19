@@ -12,13 +12,9 @@
     return "미확인";
   }
 
-  function renderReport() {
-    const target = C.id("hostBoundaryReport");
-    const agent = C.state.agents.find(item => item.agent_id === C.id("hostBoundaryAgent").value);
-    if (!agent) {
-      target.replaceChildren(C.empty(C.state.agents.length ? "에이전트를 선택하면 최근 보고를 확인할 수 있습니다." : "조회할 등록 에이전트가 없습니다."));
-      return;
-    }
+  // Facts for the agent detail: the central registration next to what the
+  // current registration's latest authenticated heartbeat reported.
+  C.hostBoundaryFacts = agent => {
     const hb = C.object(agent.heartbeat);
     const bound = Boolean(agent.enrollment_id) && hb.agent_id === agent.agent_id && hb.enrollment_id === agent.enrollment_id;
     const current = bound && !agent.revoked && C.fresh(hb.sent_at);
@@ -26,7 +22,7 @@
     const policy = C.object(hb.policy_status);
     const results = {local: "로컬 설정 사용", applied: "적용", rejected: "거절", stale: "유효기간 경과"};
     const status = current && Object.hasOwn(results, policy.result) ? results[policy.result] : "미확인";
-    const facts = [
+    return [
       ["중앙 등록", agent.revoked ? "등록 해지" : "등록 유지"],
       ["등록 ID", agent.enrollment_id],
       ["중앙 목표 정책 리비전", revision(agent.desired_policy_revision)],
@@ -36,12 +32,5 @@
       ["에이전트 정책 적용 결과", status],
       ["프로세스 종료 로컬 허용", current ? localTermination(C.object(report.capabilities), hb.sent_at) : "미확인"]
     ];
-    target.replaceChildren(C.facts(facts));
-  }
-
-  C.id("hostBoundaryAgent").addEventListener("change", renderReport);
-  C.onState(() => {
-    C.options("hostBoundaryAgent", C.state.agents.map(agent => [agent.agent_id, agent.hostname ? `${agent.agent_id} · ${agent.hostname}` : agent.agent_id]), "에이전트를 선택하세요");
-    renderReport();
-  });
+  };
 })(globalThis.XEC);

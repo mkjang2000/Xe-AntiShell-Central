@@ -6,7 +6,7 @@
   const same = (a, b) => a.service === b.service && a.policy_id === b.policy_id && a.policy_version === b.policy_version;
   const validService = name => name.length > 8 && name.length <= 255 && /^[A-Za-z0-9_.@\\-]+\.service$/.test(name);
   const writable = () => ["admin", "operator"].includes(C.session?.role);
-  const modes = {observe: ["관찰", "blue"], would_block: ["모의 대응", "warning"], enforce: ["조건부 종료", "danger"]};
+  const modes = {observe: ["탐지 전용", "blue"], would_block: ["모의 대응", "warning"], enforce: ["자동 종료", "danger"]};
   const profile = policy => {
     const response = C.object(policy.response), detection = C.object(policy.detection);
     if (detection.enabled === false) return ["탐지 꺼짐", "neutral"];
@@ -24,7 +24,8 @@
       id("policy"+pane+"Pane").hidden = pane !== active;
       id("policy"+pane+"Tab").setAttribute("aria-pressed", String(pane === active));
     }
-    if (name === "Assignments") C.refreshAppliedPolicies?.();
+    if (name === "Assignments") { C.renderAssignments?.(); C.refreshAppliedPolicies?.(); }
+    if (name === "Deployment") C.loadPolicyTrials?.();
   };
   C.policyPane = () => active;
   C.appPolicyTag = policy => C.tag(...profile(policy));
@@ -54,7 +55,7 @@
     const notes = [];
     if (source) notes.push(source.name+" · v"+source.version+" · "+profile(source.settings)[0]+".");
     else if (!sources().length) notes.push("먼저 서비스 연결이 없는 정책을 한 개 이상 저장하세요.");
-    if (bindings.length && id("responseMode").value !== "observe") notes.push("서비스를 연결한 호스트의 기본 대응 방식은 관찰이어야 합니다.");
+    if (bindings.length && id("responseMode").value !== "observe") notes.push("서비스를 연결한 정책의 기본 대응 방식은 탐지 전용이어야 합니다. 대응 탭에서 바꾸세요.");
     C.text("appBindingHint", notes.join(" "));
     id("appBindingHint").hidden = !notes.length;
   }
@@ -117,7 +118,6 @@
       id("appBindingCancel").addEventListener("click",() => { clearEntry(); render(); });
       id("appBindingSource").addEventListener("change",renderHint);
       id("appBindingService").addEventListener("input",renderHint);
-      id("responseMode").addEventListener("change",renderHint);
       id("templateID").addEventListener("input",render);
     },
     load(settings) {
@@ -127,11 +127,13 @@
       clearEntry(); render();
     },
     read() {
-      if (editing || id("appBindingService").value.trim() || id("appBindingSource").value) throw new Error("입력 중인 서비스 연결을 먼저 추가·변경하거나 취소하세요.");
-      if (bindings.length && id("responseMode").value !== "observe") throw new Error("서비스를 연결한 호스트 기본 정책의 대응 방식을 관찰(observe)로 설정하세요.");
-      if (bindings.some(ref => ref.policy_id === id("templateID").value.trim())) throw new Error("호스트 정책을 자기 자신의 서비스 정책으로 연결할 수 없습니다.");
+      if (editing || id("appBindingService").value.trim() || id("appBindingSource").value) throw C.sectionError("services", "입력 중인 서비스 연결을 먼저 추가·변경하거나 취소하세요.");
+      if (bindings.length && id("responseMode").value !== "observe") throw C.sectionError("response", "서비스를 연결한 정책의 기본 대응 방식은 탐지 전용(observe)이어야 합니다. 대응은 연결한 서비스 정책에서 지정하세요.");
+      if (bindings.some(ref => ref.policy_id === id("templateID").value.trim())) throw C.sectionError("services", "정책을 자기 자신의 서비스 정책으로 연결할 수 없습니다.");
       return hadBindings || bindings.length ? {application_bindings:structuredClone(bindings)} : {};
     },
+    count: () => bindings.length,
+    hint: renderHint,
     render
   };
 })(globalThis.XEC);

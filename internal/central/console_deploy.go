@@ -357,6 +357,10 @@ func (s *Server) consolePreview(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	snapshot, template, err := consoleSnapshot(r.Context(), tx, request, now)
+	var current []consoleCurrentPolicy
+	if err == nil {
+		current, err = consoleCurrentPolicies(r.Context(), tx, snapshot.Targets)
+	}
 	_ = tx.Rollback()
 	if err == nil {
 		snapshot.Nonce, err = randomToken()
@@ -371,7 +375,7 @@ func (s *Server) consolePreview(w http.ResponseWriter, r *http.Request) {
 		s.consoleError(w, "preview signing", err)
 		return
 	}
-	respond(w, http.StatusOK, map[string]any{"preview_token": token, "template": template, "targets": snapshot.Targets, "pending_features": consolePending(template.Settings)})
+	respond(w, http.StatusOK, map[string]any{"preview_token": token, "template": template, "targets": snapshot.Targets, "current_policies": current, "pending_features": consolePending(template.Settings)})
 }
 
 func sameConsoleSnapshot(before, after consolePreviewToken) bool {

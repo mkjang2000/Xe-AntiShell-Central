@@ -67,12 +67,86 @@
     if (exact) container.append(C.el("p","panel-note","적용 보고는 호스트가 정책 묶음을 수락한 시점을 나타냅니다. 서비스별 센서 수신과 대응 결과는 에이전트 상세와 탐지 이력에서 확인하세요."));
     return container;
   };
+  // Fleet table: one row per registered agent, categorised from the same
+  // heartbeat evidence as the agent list. Details load for one selected row.
+  let selected = "";
+  const chosen = new Set();
+  const writable = () => ["admin", "operator"].includes(C.session?.role);
+  const categories = {applied: ["적용 완료", "good"], pending: ["적용 대기", "warning"], error: ["오류", "danger"], unknown: ["확인 필요", "neutral"], none: ["정책 없음", "neutral"], outdated: ["재배포 필요", "warning"]};
+  C.assignmentCategory = agent => {
+    const state = C.policyState(agent);
+    if (!agent.desired_policy_revision) return "none";
+    if (state.tone === "danger") return "error";
+    if (state.applied) return "applied";
+    if (state.label === "적용 대기") return "pending";
+    return "unknown";
+  };
+  const templateNote = agent => {
+    if (!agent.desired_policy_revision) return null;
+    const template = C.state.templates.find(t => t.id === agent.desired_policy_id);
+    const name = template ? `${template.name} · ${agent.desired_policy_id}` : agent.desired_policy_id || "콘솔 밖에서 발급한 정책";
+    const tag = {current: ["현재 저장본", "good"], changed: ["저장본 변경됨 · 재배포 필요", "warning"], missing: ["원본 정책 삭제됨", "neutral"]}[agent.policy_template_state];
+    const cell = C.el("div", "assignment-policy");
+    cell.append(C.el("span", "", name));
+    if (tag) cell.append(C.tag(...tag));
+    return cell;
+  };
+  const filtered = () => {
+    const query = id("assignmentSearch").value.trim().toLowerCase(), policy = id("assignmentPolicyFilter").value, state = id("assignmentStateFilter").value;
+    return C.state.agents.filter(agent => !agent.revoked).filter(agent => {
+      if (query && !`${agent.agent_id} ${agent.hostname || ""}`.toLowerCase().includes(query)) return false;
+      if (policy === "-" ? agent.desired_policy_revision > 0 : policy && agent.desired_policy_id !== policy) return false;
+      if (state === "outdated") return agent.policy_template_state === "changed";
+      return !state || C.assignmentCategory(agent) === state;
+    });
+  };
+  const renderSelection = () => {
+    for (const agentID of [...chosen]) if (!C.state.agents.some(agent => agent.agent_id === agentID && !agent.revoked)) chosen.delete(agentID);
+    C.text("assignmentSelection", chosen.size ? `${chosen.size}대 선택` : "배포할 에이전트를 표에서 선택할 수 있습니다.");
+    id("assignmentDeploy").disabled = !chosen.size || !writable();
+  };
+  C.renderAssignments = () => {
+    const active = C.state.agents.filter(agent => !agent.revoked), counts = {applied: 0, pending: 0, error: 0, unknown: 0, none: 0, outdated: 0};
+    for (const agent of active) { counts[C.assignmentCategory(agent)]++; if (agent.policy_template_state === "changed") counts.outdated++; }
+    const stateFilter = id("assignmentStateFilter").value;
+    id("assignmentSummary").replaceChildren(...Object.entries(categories).filter(([key]) => counts[key] || key === "applied").map(([key, [label, tone]]) => {
+      const chip = C.button("", () => { id("assignmentStateFilter").value = stateFilter === key ? "" : key; C.renderAssignments(); }, `summary-chip ${tone}`);
+      chip.append(C.el("span", "", label), C.el("strong", "", String(counts[key])));
+      chip.setAttribute("aria-pressed", String(stateFilter === key));
+      return chip;
+    }));
+    const policies = [...new Set(active.map(agent => agent.desired_policy_id).filter(Boolean))].sort();
+    C.options("assignmentPolicyFilter", [["-", "정책 없음"], ...policies.map(policy => [policy, C.state.templates.find(t => t.id === policy)?.name ? `${C.state.templates.find(t => t.id === policy).name} · ${policy}` : policy])], "전체 정책");
+    const agents = filtered();
+    C.text("assignmentCount", agents.length === active.length ? `${active.length}대` : `${agents.length} / ${active.length}대`);
+    const rows = agents.map(agent => {
+      const row = C.el("tr"), state = C.policyState(agent), category = C.assignmentCategory(agent), hb = C.object(agent.heartbeat);
+      if (agent.agent_id === selected) row.className = "selected-row";
+      const pick = C.el("input"); pick.type = "checkbox"; pick.checked = chosen.has(agent.agent_id); pick.setAttribute("aria-label", `${agent.agent_id} 선택`);
+      pick.addEventListener("change", () => { if (pick.checked) chosen.add(agent.agent_id); else chosen.delete(agent.agent_id); renderSelection(); });
+      const identity = C.el("td", "cell-primary", agent.agent_id); identity.append(C.el("span", "secondary", agent.hostname || "호스트명 보고 없음"));
+      const policyCell = C.el("td"); policyCell.append(templateNote(agent) || C.el("span", "cell-muted", "중앙 정책 없음"));
+      const stateCell = C.el("td"); stateCell.append(C.tag(category === "none" ? "정책 없음" : state.label, category === "none" ? "neutral" : state.tone));
+      const revision = C.el("td", "cell-muted", `${state.active ?? "—"} / ${state.desired ?? "—"}`);
+      const last = C.el("td", "cell-muted", C.age(hb.sent_at));
+      const action = C.el("td"), open = C.button("상세", () => { selected = agent.agent_id; C.renderAssignments(); C.refreshAppliedPolicies(true); id("appliedPolicyPanel").scrollIntoView?.({block: "start"}); id("appliedPolicyTitle").focus?.({preventScroll: true}); }, "small");
+      open.setAttribute("aria-label", `${agent.agent_id} 적용 상세`); action.append(open);
+      const pickCell = C.el("td"); pickCell.append(pick);
+      row.append(pickCell, identity, policyCell, stateCell, revision, last, action);
+      return row;
+    });
+    if (!rows.length) { const row = C.el("tr"), cell = C.el("td", "empty-cell", active.length ? "조건에 맞는 에이전트가 없습니다." : "등록된 에이전트가 없습니다."); cell.colSpan = 7; row.append(cell); rows.push(row); }
+    id("assignmentRows").replaceChildren(...rows);
+    id("assignmentSelectAll").checked = agents.length > 0 && agents.every(agent => chosen.has(agent.agent_id));
+    renderSelection();
+  };
   C.refreshAppliedPolicies = async (force = false) => {
-    const selected = id("appliedPolicyAgent").value;
     const agent = C.state.agents.find(a => a.agent_id === selected);
     const out = id("appliedPolicyReport");
+    id("appliedPolicyPanel").hidden = !agent;
     id("reloadAppliedPolicies").disabled = !agent;
-    if (!agent) { sequence++; cacheKey = ""; out.replaceChildren(C.empty(C.state.agents.length ? "에이전트를 선택하면 목표 정책과 적용 보고를 확인할 수 있습니다." : "등록된 에이전트가 없습니다.")); return; }
+    if (!agent) { sequence++; cacheKey = ""; out.replaceChildren(); return; }
+    C.text("appliedPolicyTitle", `적용 상세 · ${agent.agent_id}${agent.hostname ? ` · ${agent.hostname}` : ""}`);
     const key = C.policyIdentity(agent);
     if (!force && key === cacheKey && !(expiresAt && expiresAt <= C.now())) return;
     expiresAt = 0;
@@ -91,11 +165,23 @@
     }
   };
   C.initAppliedPolicies = () => {
-    id("appliedPolicyAgent").addEventListener("change",() => C.refreshAppliedPolicies());
+    for (const name of ["assignmentSearch", "assignmentPolicyFilter", "assignmentStateFilter"]) id(name).addEventListener(name === "assignmentSearch" ? "input" : "change", () => C.renderAssignments());
+    id("assignmentSelectAll").addEventListener("change", () => {
+      for (const agent of filtered()) if (id("assignmentSelectAll").checked) chosen.add(agent.agent_id); else chosen.delete(agent.agent_id);
+      C.renderAssignments();
+    });
+    id("assignmentDeploy").addEventListener("click", () => {
+      const agents = C.state.agents.filter(agent => chosen.has(agent.agent_id));
+      const policies = new Set(agents.map(agent => agent.desired_policy_id || ""));
+      const only = policies.size === 1 ? [...policies][0] : "";
+      C.startDeployment?.({templateID: C.state.templates.some(t => t.id === only) ? only : "", agentIDs: [...chosen]});
+    });
     id("reloadAppliedPolicies").addEventListener("click",() => C.refreshAppliedPolicies(true));
+    id("openAgentDetail").addEventListener("click",() => { if (selected) C.selectAgent?.(selected); });
     C.onState(() => {
-      C.options("appliedPolicyAgent", C.state.agents.map(a => [a.agent_id,a.hostname ? a.agent_id+" · "+a.hostname : a.agent_id]),"에이전트를 선택하세요");
-      if (C.policyPane() === "Assignments" && C.view === "policies") C.refreshAppliedPolicies();
+      if (C.policyPane() !== "Assignments") return;
+      C.renderAssignments();
+      if (C.view === "policies") C.refreshAppliedPolicies();
     });
   };
 })(globalThis.XEC);
