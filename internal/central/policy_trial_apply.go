@@ -98,7 +98,7 @@ func (t policyTrial) plan(ctx context.Context, tx *sql.Tx, req trialAction, now 
 			return out, fmt.Errorf("%w: %s의 비교 결과가 필요합니다", ErrInvalid, a.AgentID)
 		}
 		if req.Action == "restore" {
-			in, err := t.input(ctx, tx, a)
+			in, err := t.policies(ctx, tx, a)
 			if err != nil {
 				return out, err
 			}
@@ -106,7 +106,7 @@ func (t policyTrial) plan(ctx context.Context, tx *sql.Tx, req trialAction, now 
 			if err != nil {
 				return out, err
 			}
-			if err = requireDetectionPolicySupport(in.Current.Detection, hb, a.AgentID, a.EnrollmentID, now); err != nil {
+			if err = requireDetectionPolicySupport(in.Current.Detection, in.Current.Applications, hb, a.AgentID, a.EnrollmentID, now); err != nil {
 				return out, err
 			}
 		}
@@ -169,7 +169,7 @@ func (s *Server) trialAction(ctx context.Context, tx *sql.Tx, t policyTrial, req
 			return out, err
 		}
 		if req.Action == "restore" {
-			in, err := t.input(ctx, tx, a)
+			in, err := t.policies(ctx, tx, a)
 			if err != nil {
 				return out, err
 			}

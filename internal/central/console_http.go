@@ -31,6 +31,7 @@ func (s *Server) ConsoleHandler() http.Handler {
 	mux.HandleFunc("GET /api/audit", s.consoleAudit)
 	mux.HandleFunc("POST /api/groups", s.consoleSaveGroup)
 	mux.HandleFunc("DELETE /api/groups/{id}", s.consoleDeleteGroup)
+	mux.HandleFunc("GET /api/templates/{id}/usage", s.consoleTemplateUsage)
 	mux.HandleFunc("POST /api/templates", s.consoleSaveTemplate)
 	mux.HandleFunc("DELETE /api/templates/{id}", s.consoleDeleteTemplate)
 	mux.HandleFunc("POST /api/deploy/preview", s.consolePreview)

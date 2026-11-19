@@ -115,7 +115,9 @@ func (t policyTrial) status(ctx context.Context, tx *sql.Tx, a consoleDeployTarg
 		if err = json.Unmarshal(bytes, &signed); err != nil {
 			return out, err
 		}
-		if !now.Before(signed.Policy.ExpiresAt) {
+		if len(signed.Policy.Applications) != 0 && !matchesReportedPolicy(signed, hb.PolicyStatus) {
+			out.State = "unverified"
+		} else if !now.Before(signed.Policy.ExpiresAt) {
 			out.State = "stale"
 		} else {
 			out.State = "applied"
@@ -124,7 +126,7 @@ func (t policyTrial) status(ctx context.Context, tx *sql.Tx, a consoleDeployTarg
 	err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM policy_trial_reports WHERE trial=? AND agent_id=?)", t.ID, a.AgentID).Scan(&out.Compared)
 	return out, err
 }
-func (t policyTrial) input(ctx context.Context, tx *sql.Tx, a consoleDeployTarget) (managed.PolicyImpactInput, error) {
+func (t policyTrial) policies(ctx context.Context, tx *sql.Tx, a consoleDeployTarget) (managed.PolicyImpactInput, error) {
 	var source []byte
 	err := tx.QueryRowContext(ctx, "SELECT signed_json FROM policies WHERE agent_id=? AND enrollment_id=? AND revision=?", a.AgentID, a.EnrollmentID, a.CurrentRevision).Scan(&source)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -139,6 +141,16 @@ func (t policyTrial) input(ctx context.Context, tx *sql.Tx, a consoleDeployTarge
 	}
 	return managed.PolicyImpactInput{TrialID: t.ID, EvaluatedAt: t.Snapshot.IssuedAt, Current: old.Policy, Candidate: t.Template.Settings.wirePolicy(t.Template.ID, a.AgentID, a.EnrollmentID, a.NextRevision, t.Snapshot.IssuedAt)}, nil
 }
+func (t policyTrial) input(ctx context.Context, tx *sql.Tx, a consoleDeployTarget) (managed.PolicyImpactInput, error) {
+	in, err := t.policies(ctx, tx, a)
+	if err == nil && (len(in.Current.Applications) != 0 || len(in.Candidate.Applications) != 0) {
+		return managed.PolicyImpactInput{}, errApplicationComparison
+	}
+	return in, err
+}
+
+var errApplicationComparison = fmt.Errorf("%w: 현재 표본 비교기는 서비스별 독립 정책을 평가하지 않습니다. 일반 배포에서 대상 한 대를 선택해 확인하세요", ErrInvalid)
+
 func (s *Server) createTrial(ctx context.Context, tx *sql.Tx, before consolePreviewToken, canary, actor string, now time.Time) (policyTrial, error) {
 	id := "trial-" + before.Nonce
 	t := policyTrial{ID: id, Canary: canary, Phase: "prepared", Snapshot: before}
@@ -148,6 +160,9 @@ func (s *Server) createTrial(ctx context.Context, tx *sql.Tx, before consolePrev
 	}
 	if !sameConsoleSnapshot(before, snap) {
 		return t, ErrConflict
+	}
+	if len(tpl.Settings.Applications) != 0 {
+		return t, errApplicationComparison
 	}
 	t.Template = tpl
 	if _, err = t.target(canary); err != nil {

@@ -43,7 +43,7 @@ func (s *Store) AssignPolicy(ctx context.Context, signed managed.SignedPolicy, n
 		}
 		return ErrConflict
 	}
-	if err = requireDetectionPolicySupport(policy.Detection, heartbeat, policy.AgentID, policy.EnrollmentID, now); err != nil {
+	if err = requireDetectionPolicySupport(policy.Detection, policy.Applications, heartbeat, policy.AgentID, policy.EnrollmentID, now); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, "INSERT INTO policies(agent_id,enrollment_id,revision,signed_json) VALUES(?,?,?,?)", policy.AgentID, enrollment, policy.Revision, body); err != nil {

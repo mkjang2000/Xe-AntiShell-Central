@@ -58,7 +58,7 @@ func TestPrivilegePolicyRequiresCurrentCompatibleEngineNotSensorReceipt(t *testi
 			h := privilegeHeartbeat("agent-a", "current-enrollment", now)
 			test.mutate(&h)
 			body, _ := json.Marshal(h)
-			err := requireDetectionPolicySupport(detection, body, "agent-a", "current-enrollment", now)
+			err := requireDetectionPolicySupport(detection, nil, body, "agent-a", "current-enrollment", now)
 			if (err == nil) != test.allowed {
 				t.Fatalf("allowed=%v err=%v", test.allowed, err)
 			}
@@ -67,7 +67,7 @@ func TestPrivilegePolicyRequiresCurrentCompatibleEngineNotSensorReceipt(t *testi
 			}
 		})
 	}
-	if err := requireDetectionPolicySupport(managed.DetectionPolicy{}, nil, "old", "old", now); err != nil {
+	if err := requireDetectionPolicySupport(managed.DetectionPolicy{}, nil, nil, "old", "old", now); err != nil {
 		t.Fatal("legacy policy now requires support report", err)
 	}
 }

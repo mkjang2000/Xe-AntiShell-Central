@@ -136,12 +136,20 @@ func consoleSnapshot(ctx context.Context, tx *sql.Tx, request consolePreviewRequ
 		if target.CurrentRevision >= math.MaxInt64 {
 			return snapshot, template, fmt.Errorf("%w: 정책 revision이 최대값에 도달했습니다", ErrInvalid)
 		}
-		if err = requireDetectionPolicySupport(template.Settings.Detection, heartbeat, target.AgentID, target.EnrollmentID, now); err != nil {
-			unsupported = append(unsupported, strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": "))
-			continue
+		var report managed.Heartbeat
+		settings := template.Settings
+		checkSupport := requiresDetectionSupport(settings.Detection, settings.Applications)
+		if checkSupport || settings.Response.Mode != "observe" {
+			report = decodePolicyHeartbeat(heartbeat)
+		}
+		if checkSupport {
+			if err = checkDetectionSupport(settings.Detection, settings.Applications, report, target.AgentID, target.EnrollmentID, now); err != nil {
+				unsupported = append(unsupported, strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": "))
+				continue
+			}
 		}
 		target.NextRevision = target.CurrentRevision + 1
-		target.Warnings = consolePolicyWarnings(template.Settings, heartbeat, now)
+		target.Warnings = warningsForApplications(settings, report, now)
 		snapshot.Targets = append(snapshot.Targets, target)
 	}
 	if len(unsupported) > 0 {
@@ -165,7 +173,7 @@ func consolePendingWithMeasurement(settings ConsoleSettings, measured bool) []st
 	return pending
 }
 
-func consolePolicyWarnings(settings ConsoleSettings, body []byte, now time.Time) []string {
+func warningsForSettings(settings ConsoleSettings, heartbeat managed.Heartbeat, now time.Time) []string {
 	warnings := []string{}
 	detection := settings.Detection
 	checkResponse := settings.Response.Mode != "observe"
@@ -184,10 +192,6 @@ func consolePolicyWarnings(settings ConsoleSettings, body []byte, now time.Time)
 	checkScopes := detection.Enabled && detection.ServiceObservations != nil && len(*detection.ServiceObservations) > 0
 	if !checkResponse && !checkScopes && !checkAcceptance {
 		return warnings
-	}
-	var heartbeat managed.Heartbeat
-	if json.Unmarshal(body, &heartbeat) != nil {
-		heartbeat = managed.Heartbeat{}
 	}
 	if checkAcceptance {
 		if warning := enforceAcceptanceWarning(heartbeat, now); warning != "" {

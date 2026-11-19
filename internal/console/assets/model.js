@@ -67,7 +67,12 @@
     else { label = "적용 대기"; tone = "warning"; }
     return {active: Number.isFinite(active) ? active : null, desired, applied, wireApplied, pending, label, tone};
   };
-  C.policyIdentity = agent => JSON.stringify([agent.agent_id,agent.enrollment_id,agent.desired_policy_revision]);
+  C.policyIdentity = agent => {
+    const hb = C.object(agent.heartbeat), policy = C.object(hb.policy_status);
+    return JSON.stringify([agent.agent_id, agent.enrollment_id, agent.desired_policy_revision, agent.revoked,
+      C.connection(agent).key, policy.desired_revision, policy.active_revision, policy.result, policy.applied_at,
+      policy.policy_sha256, C.array(agent.pending_features)]);
+  };
   C.policyResponseMatches = (agent, value) => {
     const policy = C.object(value).policy;
     if (policy === null) return agent.desired_policy_revision === 0;
@@ -249,7 +254,9 @@
   C.settingsFromPolicy = (policy, desired) => {
     const p = C.object(policy), source = C.object(desired);
     const hours = Math.round((Date.parse(p.expires_at) - Date.parse(p.issued_at)) / 3600000);
-    return {detection: structuredClone(p.detection || {}), response: structuredClone(p.response || {}), uninstall_mode: p.uninstall_mode, monitoring: structuredClone(p.monitoring || {}), integrity: structuredClone(source.integrity || {enabled: false, mode: "observe", require_tpm: false, paths: []}), validity_hours: Number.isFinite(hours) ? Math.max(1, Math.min(8760, hours)) : 24};
+    const applications = C.array(p.applications);
+    const bindings = applications.map(({service, policy_id, policy_version}) => ({service, policy_id, policy_version}));
+    return {...(bindings.length ? {application_bindings: bindings, applications: structuredClone(applications)} : {}), detection: structuredClone(p.detection || {}), response: structuredClone(p.response || {}), uninstall_mode: p.uninstall_mode, monitoring: structuredClone(p.monitoring || {}), integrity: structuredClone(source.integrity || {enabled: false, mode: "observe", require_tpm: false, paths: []}), validity_hours: Number.isFinite(hours) ? Math.max(1, Math.min(8760, hours)) : 24};
   };
   C.validateSettings = settings => {
     const d = settings.detection, r = settings.response, m = settings.monitoring;
@@ -289,6 +296,16 @@
     const snapshot = structuredClone(template);
     for (const key of ["web_executables","web_services","shells","allowed_pairs"]) snapshot.settings.detection[key] = C.array(snapshot.settings.detection[key]);
     snapshot.settings.response.required_capabilities = C.array(snapshot.settings.response.required_capabilities);
+    const refs = snapshot.settings.application_bindings, apps = snapshot.settings.applications;
+    if (refs != null || apps != null) {
+      const bindings = refs ?? [], policies = apps ?? [];
+      if (!Array.isArray(bindings) || !Array.isArray(policies) || bindings.length > 64 || policies.length !== bindings.length ||
+          new Set(bindings.map(ref => ref?.service)).size !== bindings.length ||
+          !bindings.every(ref => ref && policies.some(app => app && app.service === ref.service && app.policy_id === ref.policy_id &&
+            app.policy_version === ref.policy_version && typeof app.detection?.enabled === "boolean" && ["observe","would_block","enforce"].includes(app.response?.mode)))) {
+        throw new Error("미리보기의 서비스 연결과 고정 정책 버전을 확인할 수 없습니다. 다시 조회하세요.");
+      }
+    }
     C.validateSettings(snapshot.settings);
     return snapshot;
   };

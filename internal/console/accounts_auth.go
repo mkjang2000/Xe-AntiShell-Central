@@ -57,6 +57,9 @@ func allowsAPI(role Role, method, endpoint string) bool {
 			return true
 		}
 		parts := strings.Split(endpoint, "/")
+		if len(parts) == 5 && parts[1] == "api" && parts[2] == "templates" && parts[3] != "" && parts[4] == "usage" {
+			return true
+		}
 		if len(parts) == 5 && parts[1] == "api" && parts[2] == "updates" && parts[3] == "rollouts" && parts[4] != "" {
 			return true
 		}

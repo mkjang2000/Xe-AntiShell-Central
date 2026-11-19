@@ -51,12 +51,14 @@ type ConsoleIntegrity struct {
 // ConsoleSettings retains desired configuration independently of the agent wire
 // contract. In particular integrity must never be added to a managed-v1 policy.
 type ConsoleSettings struct {
-	Detection     managed.DetectionPolicy  `json:"detection"`
-	Response      managed.ResponsePolicy   `json:"response"`
-	UninstallMode string                   `json:"uninstall_mode"`
-	Monitoring    managed.MonitoringPolicy `json:"monitoring"`
-	Integrity     ConsoleIntegrity         `json:"integrity"`
-	ValidityHours int                      `json:"validity_hours"`
+	ApplicationBindings []ApplicationBinding        `json:"application_bindings,omitempty"`
+	Applications        []managed.ApplicationPolicy `json:"applications,omitempty"`
+	Detection           managed.DetectionPolicy     `json:"detection"`
+	Response            managed.ResponsePolicy      `json:"response"`
+	UninstallMode       string                      `json:"uninstall_mode"`
+	Monitoring          managed.MonitoringPolicy    `json:"monitoring"`
+	Integrity           ConsoleIntegrity            `json:"integrity"`
+	ValidityHours       int                         `json:"validity_hours"`
 }
 
 type ConsoleTemplate struct {
@@ -77,7 +79,7 @@ func defaultConsoleSettings(now time.Time) ConsoleSettings {
 func (settings ConsoleSettings) wirePolicy(id, agentID, enrollmentID string, revision uint64, now time.Time) managed.Policy {
 	return managed.Policy{SchemaVersion: managed.SchemaVersion, ID: id, Revision: revision,
 		AgentID: agentID, EnrollmentID: enrollmentID, IssuedAt: now, ExpiresAt: now.Add(time.Duration(settings.ValidityHours) * time.Hour),
-		Detection: settings.Detection, Response: settings.Response, UninstallMode: settings.UninstallMode, Monitoring: settings.Monitoring}
+		Detection: settings.Detection, Response: settings.Response, UninstallMode: settings.UninstallMode, Monitoring: settings.Monitoring, Applications: settings.Applications}
 }
 
 func (settings ConsoleSettings) validate() error {
@@ -213,18 +215,21 @@ func (s *Store) saveConsoleTemplate(ctx context.Context, template ConsoleTemplat
 	if err := validateConsoleMetadata(template.ID, template.Name, template.Description, template.Version); err != nil {
 		return template, err
 	}
-	if err := template.Settings.validate(); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return template, err
+	}
+	defer tx.Rollback()
+	if err = resolveTemplateApplications(ctx, tx, &template); err != nil {
+		return template, err
+	}
+	if err = template.Settings.validate(); err != nil {
 		return template, err
 	}
 	body, err := json.Marshal(template.Settings)
 	if err != nil {
 		return template, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return template, err
-	}
-	defer tx.Rollback()
 	if template.Version, err = saveConsoleRecord(ctx, tx, "console_templates", template.ID, template.Name, template.Description, template.Version, "settings_json", body); err != nil {
 		return template, err
 	}

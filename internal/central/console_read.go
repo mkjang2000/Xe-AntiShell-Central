@@ -25,7 +25,10 @@ func (s *Server) consoleAgentPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var enrollment string
-	if err = tx.QueryRowContext(r.Context(), "SELECT enrollment_id FROM agents WHERE agent_id=?", id).Scan(&enrollment); errors.Is(err, sql.ErrNoRows) {
+	var heartbeat []byte
+	var seen int64
+	var revoked bool
+	if err = tx.QueryRowContext(r.Context(), "SELECT enrollment_id,heartbeat_json,last_seen_at_ns,revoked FROM agents WHERE agent_id=?", id).Scan(&enrollment, &heartbeat, &seen, &revoked); errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
 	if err != nil {
@@ -37,7 +40,7 @@ func (s *Server) consoleAgentPolicy(w http.ResponseWriter, r *http.Request) {
 	err = tx.QueryRowContext(r.Context(), "SELECT signed_json FROM policies WHERE agent_id=? AND enrollment_id=? ORDER BY revision DESC LIMIT 1", id, enrollment).Scan(&body)
 	if errors.Is(err, sql.ErrNoRows) {
 		_ = tx.Rollback()
-		respond(w, http.StatusOK, map[string]any{"policy": nil, "pending_features": []string{}})
+		respond(w, http.StatusOK, map[string]any{"policy": nil, "pending_features": []string{}, "applied_policy": nil, "application_status": applicationStatus{State: "none"}})
 		return
 	}
 	var signed managed.SignedPolicy
@@ -49,7 +52,12 @@ func (s *Server) consoleAgentPolicy(w http.ResponseWriter, r *http.Request) {
 		s.consoleError(w, "agent policy decode", err)
 		return
 	}
-	response := map[string]any{"policy": signed.Policy, "pending_features": []string{}}
+	applied, status, err := reportedApplicationPolicy(r.Context(), tx, signed, heartbeat, seen, revoked, s.now().UTC())
+	if err != nil {
+		s.consoleError(w, "agent applied policy", err)
+		return
+	}
+	response := map[string]any{"policy": signed.Policy, "pending_features": []string{}, "applied_policy": applied, "application_status": status}
 	var measured bool
 	err = tx.QueryRowContext(r.Context(), `SELECT s.settings_json,EXISTS(SELECT 1 FROM integrity_file_reports f WHERE (f.agent_id,f.enrollment_id,f.revision)=(s.agent_id,s.enrollment_id,s.revision)) FROM console_policy_settings s WHERE s.agent_id=? AND s.enrollment_id=? AND s.revision=?`, id, enrollment, signed.Policy.Revision).Scan(&body, &measured)
 	if err == nil {

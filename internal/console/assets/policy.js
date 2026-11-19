@@ -114,13 +114,14 @@
     values.serviceScopes = JSON.stringify(d.service_observations || [], null, 2);
     values.serviceRuleControls = JSON.stringify(d.service_rule_controls || [], null, 2);
     for (const id of fields) setValue(id, values[id]); fillCapabilityEditor(); responseHelp();
+    C.applicationBindings?.load(settings);
   };
   const fillTemplate = template => {
     const t = template || {id:"",name:"",description:"",version:0,settings:C.state.defaults};
     setValue("templateID",t.id); setValue("templateName",t.name); setValue("templateDescription",t.description); setValue("templateVersionInput",t.version);
     C.id("templateID").readOnly = t.version > 0; C.id("deleteTemplate").disabled = !(t.version > 0);
     C.text("templateEditorTitle", t.version > 0 ? "템플릿 편집" : "템플릿 만들기"); C.text("templateVersion", t.version > 0 ? `버전 ${t.version}` : "새 템플릿");
-    fillSettings(C.object(t.settings)); setDirty(false); invalidatePreview(); renderLists();
+    fillSettings(C.object(t.settings)); C.selectPolicyUsage?.(t.id, t.version); setDirty(false); invalidatePreview(); renderLists();
   };
   const readSettings = () => {
     const values = {};
@@ -129,16 +130,45 @@
     if (keys.length > 32 || keys.some(key => key.length > 255 || !/^[A-Za-z0-9_@.\\-]+$/.test(key) || key === "." || key === "..")) throw new Error("필수 기능 조건은 32개까지입니다. 키는 255자 이내의 영문·숫자·점·하이픈·밑줄·@·역슬래시로 입력하세요.");
     if (unique.size !== keys.length) throw new Error("필수 기능 조건에 중복된 키가 있습니다. 고급 편집과 체크박스 선택을 확인하세요.");
     if (capabilityEditor && C.lines(capabilityEditor.custom.value).some(key => capabilityLabels.has(key))) throw new Error("목록에 있는 기능은 고급 키 입력 대신 해당 체크박스에서 선택하세요.");
-    return C.validateSettings(C.settingsFromValues(values, P.integrityDraft));
+    return C.validateSettings({...C.settingsFromValues(values, P.integrityDraft), ...C.applicationBindings?.read()});
   };
   const renderLists = () => {
     C.text("ruleControlIDs", C.array(C.state.rule_ids).join(" · "));
     const selected = C.id("templateID").value;
-    C.id("templateList").replaceChildren(...(C.state.templates.length ? C.state.templates.map(template => {
-      const button = C.button("", async () => { if (await canDiscard()) fillTemplate(template); }, `select-item${selected === template.id ? " selected" : ""}`);
+    const focusedPolicy = document.activeElement?.dataset?.policyId;
+    const query = C.id("templateSearch").value.trim().toLowerCase();
+    const usages = new Map();
+    for (const template of C.state.templates) {
+      for (const ref of C.array(template.settings?.application_bindings)) {
+        if (!usages.has(ref.policy_id)) usages.set(ref.policy_id, new Set());
+        usages.get(ref.policy_id).add(ref.service);
+      }
+    }
+    const visible = C.state.templates.filter(template => [template.name, template.id, ...C.array(template.settings?.application_bindings).map(ref => ref.service), ...(usages.get(template.id) || [])].some(value => value.toLowerCase().includes(query)));
+    C.text("templateCatalogCount", query ? visible.length+" / "+C.state.templates.length : C.state.templates.length);
+    C.id("templateList").replaceChildren(...(visible.length ? visible.map(template => {
+      const button = C.button("", async () => {
+        if (!await canDiscard()) return;
+        fillTemplate(template);
+        if (globalThis.matchMedia?.("(max-width: 880px)").matches) {
+          C.id("templateEditorTitle").scrollIntoView({block:"start"});
+          C.id("templateEditorTitle").focus({preventScroll:true});
+        }
+      }, `select-item${selected === template.id ? " selected" : ""}`);
       button.append(C.el("strong", "", template.name), C.el("small", "", `${template.id} · 버전 ${template.version}`));
+      button.setAttribute("data-policy-id",template.id);
+      button.setAttribute("aria-pressed", String(selected === template.id));
+      if (C.appPolicyTag) button.append(C.appPolicyTag(C.object(template.settings)));
+      const count = C.array(template.settings?.application_bindings).length;
+      if (count) button.append(C.el("small","", "호스트 설정 · 서비스 연결 "+count+"개"));
+      const referenced = usages.get(template.id);
+      if (referenced) button.append(C.el("small","", "템플릿 참조 · "+[...referenced].slice(0,2).join(" · ")+(referenced.size > 2 ? " 외 "+(referenced.size-2)+"개" : "")));
       if (C.object(C.object(template.settings).integrity).enabled) button.append(C.tag("무결성 초안 포함", "pending")); return button;
-    }) : [C.empty("저장된 템플릿이 없습니다.")]));
+    }) : [C.empty(query ? "검색 결과가 없습니다." : "저장된 정책이 없습니다. 정책 만들기로 첫 정책을 작성하세요.")]));
+    if (focusedPolicy) {
+      const button = [...C.id("templateList").children].find(item => item.dataset?.policyId === focusedPolicy);
+      button?.focus({preventScroll:true});
+    }
     C.options("deployTemplate", C.state.templates.map(t => [t.id,`${t.name} · ${t.id} · v${t.version}`]), "템플릿을 선택하세요");
     C.choices("deployGroups", C.state.groups.map(g => [g.id,g.name,`${C.array(g.agent_ids).length}대`]), "deployGroup", "저장된 서버 그룹이 없습니다.");
     C.choices("deployAgents", C.state.agents.filter(a => !a.revoked).map(a => [a.agent_id,a.agent_id,a.hostname || "호스트명 보고 없음"]), "deployAgent", "배포 가능한 에이전트가 없습니다.");
@@ -181,6 +211,10 @@
       ["자원 모니터링",`${monitoring.enabled?"사용":"사용 안 함"} · ${monitoring.sample_interval_seconds}초 간격 · 프로세스 ${monitoring.process_limit}개`],
       ["정책 유효 기간",`${settings.validity_hours}시간`],["패키지 파일 검사",integrity.package_files?"사용":"사용 안 함"],["추가 무결성 초안",integrity.enabled?"활성 초안 · 에이전트 적용 대기":"사용 안 함"]
     ]),C.raw({detection, response, monitoring, uninstall_mode:settings.uninstall_mode, validity_hours:settings.validity_hours},"서명 정책 생성에 쓰는 설정 JSON"));
+    const apps = C.array(settings.applications);
+    if (apps.length && C.appProjectionTable) {
+      notes.push(C.el("p", "panel-note", "이번에 발행할 전체 서비스 연결입니다. 목록에서 빠진 기존 서비스는 호스트 기본 정책을 사용합니다."), C.appProjectionTable(apps, "이 배포에 포함되는 서비스별 정책"));
+    }
     notes.push(full);
     if (C.array(preview.pending_features).includes("integrity")) notes.push(C.el("p", "notice warning", "추가 무결성 설정(TPM·임의 경로·강제 검증)은 향후 적용을 위해 중앙 초안으로 보관합니다."));
     const warningCount = targets.filter(target => C.array(target.warnings).length).length;
@@ -194,7 +228,11 @@
       return [target.agent_id, `${target.current_revision} → ${target.next_revision}`, target.enrollment_id, warnings.length ? list : "—"];
     });
     C.id("previewTargets").replaceChildren(C.table("배포 대상과 정책 리비전 변경", ["에이전트", "현재 → 다음 리비전", "현재 등록 ID", "확인 사항"], rows));
-    C.policyTrialStart?.(preview);
+    if (apps.length) {
+      C.id("trialStart").replaceChildren(C.el("p", "panel-note", "서비스 정책은 호스트 한 대에 먼저 배포해 적용 리비전과 서비스 귀속을 확인할 수 있습니다. 오프라인 표본 비교는 서비스별 정책을 지원하지 않습니다."));
+    } else {
+      C.policyTrialStart?.(preview);
+    }
     C.id("deploymentPreview").scrollIntoView({behavior:"instant",block:"nearest"});
   };
   const previewDeploy = event => {
@@ -227,13 +265,17 @@
     if (!await canDiscard()) return;
     fillTemplate(null); fillSettings(C.settingsFromPolicy(policy, desired));
     setValue("templateName", `${policy.agent_id} 정책 복사`); setValue("templateDescription", `${policy.agent_id}의 중앙 지정 정책 ${policy.policy_id} 리비전 ${policy.revision}에서 복사`);
-    setDirty(true); globalThis.location.hash = "policies";
+    setDirty(true); C.showPolicyPane?.("Catalog"); globalThis.location.hash = "policies";
     if(C.navigate)C.navigate();
     C.notify(`'${policy.agent_id}' 정책을 새 템플릿 편집기에 복사했습니다. 서비스 목록·예외·대응 설정을 보존했습니다. 새 ID를 입력해 저장하세요.`);
     C.id("templateID").focus();
   };
   C.initPolicy = () => {
     initCapabilityEditor();
+    C.applicationBindings?.init(() => { setDirty(true); invalidatePreview(); });
+    C.initAppliedPolicies?.();
+    C.initPolicyUsage?.();
+    C.id("templateSearch").addEventListener("input", renderLists);
     C.id("newTemplate").addEventListener("click", async () => { if (await canDiscard()) { fillTemplate(null); C.id("templateID").focus(); } });
     C.id("templateForm").addEventListener("submit",saveTemplate);
     C.id("templateForm").addEventListener("input",() => { setDirty(true); invalidatePreview(); responseHelp(); });
@@ -244,7 +286,7 @@
     C.id("deployConfirm").addEventListener("change",() => { C.id("deployButton").disabled = !C.id("deployConfirm").checked || !P.preview; });
     C.id("deployButton").addEventListener("click",deploy);
     C.id("cancelPreview").addEventListener("click",invalidatePreview);
-    C.onState(() => { if (!P.initialized) { P.initialized = true; fillTemplate(null); } renderLists(); });
+    C.onState(() => { if (!P.initialized) { P.initialized = true; fillTemplate(C.state.templates[0] || null); } renderLists(); C.applicationBindings?.render(); });
     C.hasUnsavedPolicy = () => P.dirty;
   };
 })(globalThis.XEC);

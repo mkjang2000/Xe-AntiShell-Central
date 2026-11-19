@@ -23,6 +23,8 @@ Xe-AntiShell-Central/
 ├── internal/central/              # PKI, SQLite, agent and operator HTTP APIs
 │   ├── enrollment_code.go        # Certificate-bound endpoint config and installation-code issuance
 │   ├── policy_trial*.go         # Bound local comparisons, single-agent rollout, promotion and recovery
+│   ├── application_bindings.go   # Resolve template versions into signed service policies
+│   ├── application_status.go     # Match reported revisions and digests to immutable policies
 │   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
 │   ├── delivery_receipts.go      # Compact per-stream replay checks and schema 4 cursor migration
 │   ├── capacity.go               # On-demand read-only storage and expiry statistics
@@ -46,6 +48,8 @@ Xe-AntiShell-Central/
 │   ├── accounts_auth.go          # Per-request identity and role authorization
 │   ├── accounts_http.go          # Account/password administration APIs
 │   └── assets/                    # Korean fleet, policies, histories and dark/light themes
+│       ├── application-policies.js # Policy catalog, workspace navigation and service bindings
+│       ├── applied-policies.js    # Agent policy revisions and server-confirmed snapshots
 │       ├── host-boundary.js      # Read-only registration and host security capability evidence
 │       ├── file-integrity.js     # Operator file measurement details and comparison digests
 │       ├── privilege.js          # Root/credential findings and bounded before/after evidence presentation
@@ -78,6 +82,7 @@ Xe-AntiShell-Central/
 │   ├── plans/history-query-performance.md
 │   ├── plans/password-policy.md
 │   ├── plans/policy-and-agent-configuration.md
+│   ├── plans/application-policies.md
 │   └── analysis/managed-v1-operations.md
 ├── third_party/licenses/          # Preserved upstream license texts
 ├── install.sh                    # Explicit source/local-RPM installation

@@ -37,7 +37,7 @@ func TestUpdateRolesAndStreamingBodyLimit(t *testing.T) {
 			}
 		}
 	}
-	for _, path := range []string{"/api/policy-trials", "/api/policy-trials/trial-one", "/api/updates/releases", "/api/updates/agents", "/api/updates/rollouts", "/api/updates/rollouts/rollout-a", "/api/updates/github/releases"} {
+	for _, path := range []string{"/api/templates/web-observe/usage", "/api/policy-trials", "/api/policy-trials/trial-one", "/api/updates/releases", "/api/updates/agents", "/api/updates/rollouts", "/api/updates/rollouts/rollout-a", "/api/updates/github/releases"} {
 		for _, cookie := range []*http.Cookie{admin, operator, viewer} {
 			if response := accountRequest(t, s, cookie, "GET", path, nil, false); response.Code != 200 {
 				t.Fatalf("read %s denied: %d", path, response.Code)

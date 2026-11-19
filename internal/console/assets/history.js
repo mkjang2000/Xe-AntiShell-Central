@@ -36,6 +36,9 @@
       card.append(C.facts([["이벤트 시각",C.time(payload.event_time)],["서비스",process.origin_service],["PID",process.pid],["수집 소스",payload.source],...observation.fields]));
     }
     else card.append(C.el("p","record-summary",payload.kind||payload.action||payload.result||"에이전트 감사 기록"));
+    if (finding && payload.application_service && payload.application_policy_id && Number.isSafeInteger(payload.application_policy_version) && payload.application_policy_version > 0) {
+      card.append(C.facts([["정책 적용 서비스",payload.application_service],["평가한 앱 정책",payload.application_policy_id+" · v"+payload.application_policy_version],["호스트 정책 리비전",payload.policy_revision]]));
+    }
     if(finding && record.finding_location)card.append(C.findingReviews(record));
     card.append(C.raw(record,"중앙 보존 원문 보기"));return card;
   };

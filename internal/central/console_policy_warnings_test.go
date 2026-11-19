@@ -14,6 +14,10 @@ import (
 	"github.com/mkjang2000/Xe-AntiShell/protocol/model"
 )
 
+func consolePolicyWarnings(settings ConsoleSettings, body []byte, now time.Time) []string {
+	return warningsForApplications(settings, decodePolicyHeartbeat(body), now)
+}
+
 func TestConsolePolicyWarningsMatchAgentRuntimeCapabilityGate(t *testing.T) {
 	now := time.Date(2026, 11, 17, 3, 0, 0, 0, time.UTC)
 	settings := defaultConsoleSettings(now)
