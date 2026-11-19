@@ -55,6 +55,10 @@
     const pending = C.array(agent.pending_features), applied = wireApplied && !pending.length;
     let label = "미확인", tone = "neutral";
     if (desired === 0) label = "중앙 정책 없음";
+    else if (policy.result === "stale") {
+      label = C.connection(agent).key === "online" ? "정책 만료 · 탐지 유지 · 대응 중지" : "최신 상태 미확인";
+      tone = "warning";
+    }
     else if (policy.result === "rejected" || policy.error || heartbeat.policy_error) { label = "적용 오류"; tone = "danger"; }
     else if (wireApplied && pending.includes("integrity")) { label = "일부 적용 · 무결성 대기"; tone = "warning"; }
     else if (wireApplied && pending.includes("integrity.agent_files")) { label = "일부 적용 · 파일 측정 대기"; tone = "warning"; }
@@ -227,12 +231,19 @@
     if (!Array.isArray(controls)) throw new Error("서비스별 규칙 목록이 필요합니다.");
     return controls.length ? {service_rule_controls: controls} : {};
   };
-  C.settingsFromValues = values => ({
+  C.settingsFromValues = (values, draft = {}) => ({
     detection: {...serviceScopeFields(values), ...serviceRuleFields(values.serviceRuleControls), enabled: Boolean(values.detectionEnabled), extended_process_rules: Boolean(values.extendedRules), ...(values.privilegeRules ? {privilege_rules:true,root_exec_alerts:values.rootExecAlerts||"suspicious"} : {}), web_executables: C.lines(values.webExecutables), web_services: C.lines(values.webServices), shells: C.lines(values.shells), allowed_pairs: C.lines(values.allowedPairs)},
     response: {mode: values.responseMode, action: values.responseAction, risk_threshold: Number(values.riskThreshold), min_confidence: Number(values.minConfidence), required_capabilities: C.lines(values.requiredCapabilities)},
     uninstall_mode: values.uninstallMode,
     monitoring: {enabled: Boolean(values.monitoringEnabled), sample_interval_seconds: Number(values.sampleInterval), process_limit: Number(values.processLimit)},
-    integrity: {...(values.integrityPackageFiles ? {package_files:true} : {}),...(values.integrityConfigSHA ? {config_sha256:values.integrityConfigSHA.trim()} : {}),enabled: Boolean(values.integrityEnabled), mode: values.integrityMode, require_tpm: Boolean(values.integrityTPM), paths: C.lines(values.integrityPaths)},
+    integrity: {
+      ...(values.integrityPackageFiles ? {package_files:true} : {}),
+      ...(values.integrityConfigSHA ? {config_sha256:values.integrityConfigSHA.trim()} : {}),
+      enabled: draft.enabled ?? false,
+      mode: draft.mode || "observe",
+      require_tpm: draft.require_tpm ?? false,
+      paths: draft.paths === undefined ? [] : draft.paths
+    },
     validity_hours: Number(values.validityHours)
   });
   C.settingsFromPolicy = (policy, desired) => {

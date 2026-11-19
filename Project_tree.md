@@ -46,6 +46,7 @@ Xe-AntiShell-Central/
 │   ├── accounts_auth.go          # Per-request identity and role authorization
 │   ├── accounts_http.go          # Account/password administration APIs
 │   └── assets/                    # Korean fleet, policies, histories and dark/light themes
+│       ├── host-boundary.js      # Read-only registration and host security capability evidence
 │       ├── file-integrity.js     # Operator file measurement details and comparison digests
 │       ├── privilege.js          # Root/credential findings and bounded before/after evidence presentation
 │       ├── accounts.js           # Compact account list, dialogs and permission help
@@ -76,6 +77,7 @@ Xe-AntiShell-Central/
 │   ├── plans/minimal-observation-history.md
 │   ├── plans/history-query-performance.md
 │   ├── plans/password-policy.md
+│   ├── plans/policy-and-agent-configuration.md
 │   └── analysis/managed-v1-operations.md
 ├── third_party/licenses/          # Preserved upstream license texts
 ├── install.sh                    # Explicit source/local-RPM installation

@@ -29,6 +29,13 @@ test("wire-applied policy with pending integrity is not counted fully applied",(
   assert.equal(partial.wireApplied,true);assert.equal(partial.applied,false);assert.match(partial.label,/일부 적용.*무결성 대기/);
   assert.equal(C.policyState(agent({heartbeat:{sent_at:"2026-11-17T01:00:00Z",policy_status:{active_revision:3,result:"applied"}}})).applied,false);
 });
+test("policy expiry reports continued detection only on a current heartbeat",()=>{
+  const {C}=model();
+  for (const [sent_at, expected] of [[agent().heartbeat.sent_at,"정책 만료 · 탐지 유지 · 대응 중지"],["2026-11-17T01:00:00Z","최신 상태 미확인"]]) {
+    const state = C.policyState(agent({heartbeat:{sent_at,policy_status:{active_revision:3,result:"stale",error:"approved policy expired"}}}));
+    assert.equal(state.label, expected);assert.equal(state.applied, false);
+  }
+});
 test("re-enrollment with reused policy revision cannot reuse an old policy cache entry",()=>{
   const {C}=model(),old=agent({enrollment_id:"enrollment-A"}),current=agent({enrollment_id:"enrollment-B"});
   assert.notEqual(C.policyIdentity(old),C.policyIdentity(current));
@@ -156,7 +163,8 @@ test("scoped observation capabilities need their own evidence and describe limit
 });
 
 function settings(C) {
-  return C.settingsFromValues({detectionEnabled:true,extendedRules:true,webExecutables:"nginx\nphp-fpm",webServices:"nginx.service",shells:"sh\nbash",allowedPairs:"maintenance.service:bash",responseMode:"observe",responseAction:"none",riskThreshold:"90",minConfidence:"0.95",requiredCapabilities:"observation.process_exec\nresponse.terminate",monitoringEnabled:true,sampleInterval:"10",processLimit:"200",uninstallMode:"approval_required",validityHours:"24",integrityPackageFiles:true,integrityConfigSHA:"a".repeat(64),integrityEnabled:true,integrityTPM:true,integrityMode:"enforce",integrityPaths:"/usr/sbin/sentineld\n/etc/xe-antishell"});
+  return C.settingsFromValues({detectionEnabled:true,extendedRules:true,webExecutables:"nginx\nphp-fpm",webServices:"nginx.service",shells:"sh\nbash",allowedPairs:"maintenance.service:bash",responseMode:"observe",responseAction:"none",riskThreshold:"90",minConfidence:"0.95",requiredCapabilities:"observation.process_exec\nresponse.terminate",monitoringEnabled:true,sampleInterval:"10",processLimit:"200",uninstallMode:"approval_required",validityHours:"24",integrityPackageFiles:true,integrityConfigSHA:"a".repeat(64)},
+    {enabled:true,require_tpm:true,mode:"enforce",paths:["/usr/sbin/sentineld","/etc/xe-antishell"]});
 }
 test("complete policy form preserves lists, gates, monitoring and pending integrity",()=>{
   const {C}=model(),s=settings(C);C.validateSettings(s);
@@ -307,16 +315,20 @@ test("async preview shows server's enforce v2 snapshot when local list still say
   const {C,context}=model({document,Node:FakeNode});
   const local={id:"ops",name:"로컬 관찰",version:1,settings:settings(C)};
   const actual=structuredClone(local);actual.name="서버 자동 종료";actual.version=2;actual.settings.response.mode="enforce";actual.settings.response.action="terminate";
+  actual.settings.detection.extended_process_rules=false;
   C.state.templates=[local];C.checked=id=>id==="deployAgents"?["web-01"]:[];
   let resolveResponse,operation;const response=new Promise(resolve=>{resolveResponse=resolve;});
   C.request=()=>response;C.run=(_button,callback)=>{operation=callback();return operation;};
   vm.runInContext(source("policy.js"),context);C.initPolicy();
   C.id("deployTemplate").value="ops";C.id("templateID").value="ops";C.id("deploymentPreview").hidden=true;
   nodes.previewForm.handlers.submit({preventDefault(){},submitter:new FakeNode("button",document)});
-  resolveResponse({preview_token:"bound-to-actual-v2",template:actual,targets:[{agent_id:"web-01",enrollment_id:"enrollment-01",current_revision:2,next_revision:3,warnings:[]}],pending_features:["integrity"]});
+  resolveResponse({preview_token:"bound-to-actual-v2",template:actual,targets:[{agent_id:"web-01",enrollment_id:"enrollment-01",current_revision:2,next_revision:3,warnings:["파일 쓰기 센서 미확인"]}],pending_features:["integrity"]});
   await operation;
   const text=node=>typeof node==="string"?node:node.textContent+node.children.map(text).join("");
   assert.equal(nodes.deploymentPreview.hidden,false);assert.match(text(nodes.previewWarnings),/서버 자동 종료.*v2.*자동 종료/);
+  assert.doesNotMatch(text(nodes.previewWarnings),/"require_tpm"|"config_sha256"/);
+  assert.match(text(nodes.previewWarnings),/확인 사항이 있는 에이전트 1대/);
+  assert.match(text(nodes.previewTargets),/web-01.*파일 쓰기 센서 미확인/);
   assert.doesNotMatch(text(nodes.previewWarnings),/로컬 관찰|v1/);assert.equal(local.settings.response.mode,"observe");
 });
 test("preview missing exact server template snapshot fails closed",()=>{

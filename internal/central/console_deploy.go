@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
+	"github.com/mkjang2000/Xe-AntiShell/protocol/model"
 )
 
 const previewDomain = "xe-antishell-central/console-deploy/v1\x00"
@@ -165,14 +167,40 @@ func consolePendingWithMeasurement(settings ConsoleSettings, measured bool) []st
 
 func consolePolicyWarnings(settings ConsoleSettings, body []byte, now time.Time) []string {
 	warnings := []string{}
+	detection := settings.Detection
+	checkResponse := settings.Response.Mode != "observe"
+	checkAcceptance := detection.ExtendedProcessRules && settings.Response.Mode == "enforce"
+	if checkResponse && detection.ExtendedProcessRules {
+		message := "확장 규칙에서는 셸도 탐지 전용이어서 모의 대응 후보가 0개입니다."
+		if settings.Response.Mode == "enforce" {
+			message = "확장 규칙에서는 종료 후보가 0개입니다. 정책 수락에는 로컬 종료 허용과 pidfd가 필요합니다."
+		}
+		warnings = append(warnings, message)
+		checkResponse = false
+	}
 	if settings.Integrity.Enabled {
 		warnings = append(warnings, "무결성 설정은 저장되지만 현재 에이전트 프로토콜에서 지원하지 않아 적용 대기 중입니다")
 	}
-	if settings.Response.Mode == "observe" {
+	checkScopes := detection.Enabled && detection.ServiceObservations != nil && len(*detection.ServiceObservations) > 0
+	if !checkResponse && !checkScopes && !checkAcceptance {
 		return warnings
 	}
 	var heartbeat managed.Heartbeat
-	if json.Unmarshal(body, &heartbeat) != nil || heartbeat.Status.CapabilityReport == nil {
+	if json.Unmarshal(body, &heartbeat) != nil {
+		heartbeat = managed.Heartbeat{}
+	}
+	if checkAcceptance {
+		if warning := enforceAcceptanceWarning(heartbeat, now); warning != "" {
+			warnings = append(warnings, warning)
+		}
+	}
+	if checkScopes {
+		warnings = append(warnings, serviceObservationWarnings(detection, heartbeat, now)...)
+	}
+	if !checkResponse {
+		return warnings
+	}
+	if heartbeat.Status.CapabilityReport == nil {
 		warnings = append(warnings, "인증된 기능 보고가 없어 대응 기능 지원 여부를 알 수 없습니다")
 	} else {
 		report := heartbeat.Status.CapabilityReport
@@ -214,7 +242,70 @@ func consolePolicyWarnings(settings ConsoleSettings, body []byte, now time.Time)
 	return warnings
 }
 
+func enforceAcceptanceWarning(heartbeat managed.Heartbeat, now time.Time) string {
+	report := heartbeat.Status.CapabilityReport
+	if report != nil && !heartbeat.SentAt.Before(now.Add(-2*time.Minute)) && !heartbeat.SentAt.After(now.Add(time.Minute)) {
+		capability := report.Capabilities["response.terminate"]
+		if capability.Implementation == "implemented" && capability.Provider == "pidfd" {
+			switch {
+			case capability.State == model.CapabilityUnsupported:
+				return "호스트에서 pidfd를 지원하지 않아 종료 정책을 수락할 수 없습니다."
+			case capability.State == model.CapabilitySupported && capability.RuntimeState == "available":
+				return "에이전트 로컬 opt-in이 비활성화되어 종료 정책을 수락할 수 없습니다."
+			case capability.State == model.CapabilitySupported && capability.RuntimeState == "active" &&
+				capability.VerifiedAt != nil && !capability.VerifiedAt.IsZero() && !capability.VerifiedAt.After(heartbeat.SentAt.Add(time.Minute)):
+				return ""
+			}
+		}
+	}
+	return "종료 정책 수락에 필요한 호스트 pidfd 지원·로컬 허용 상태가 미확인입니다."
+}
+
+// Only explicit scopes are known to Central. Receipts concern the host sensor,
+// not the candidate service, path or destination.
+func serviceObservationWarnings(detection managed.DetectionPolicy, heartbeat managed.Heartbeat, now time.Time) []string {
+	var warnings, missing []string
+	var file, network bool
+	unmatched := 0
+	for _, scope := range *detection.ServiceObservations {
+		if !slices.Contains(detection.WebServices, scope.Service) {
+			unmatched++
+			continue
+		}
+		file = file || len(scope.ProtectedDirs) > 0
+		network = network || len(scope.AllowedTCPDestinations) > 0
+	}
+	if unmatched > 0 {
+		warnings = append(warnings, fmt.Sprintf("웹 서비스명 불일치로 관측 범위 %d개가 적용되지 않습니다.", unmatched))
+	}
+	received := func(name string) bool {
+		report := heartbeat.Status.CapabilityReport
+		if report == nil || heartbeat.Status.Collector != "tetragon-json" || heartbeat.SentAt.Before(now.Add(-2*time.Minute)) || heartbeat.SentAt.After(now.Add(time.Minute)) {
+			return false
+		}
+		sensor := report.Capabilities[name]
+		return sensor.Implementation == "implemented" && sensor.RuntimeState == "active" && sensor.VerifiedAt != nil &&
+			!sensor.VerifiedAt.Before(now.Add(-5*time.Minute)) && !sensor.VerifiedAt.After(now.Add(time.Minute))
+	}
+	if file && !received("observation.file") {
+		missing = append(missing, "파일 쓰기")
+	}
+	if network && !received("observation.network") {
+		missing = append(missing, "TCP 연결")
+	}
+	if len(missing) != 0 {
+		warnings = append(warnings, "최근 호스트 센서 수신 미확인 · "+strings.Join(missing, " / "))
+	}
+	return warnings
+}
+
 func (s *Server) encodeConsolePreview(snapshot consolePreviewToken) (string, error) {
+	// Warnings describe the latest heartbeat and are recomputed on deploy.
+	// Keep them in the HTTP response without repeating them in the signed token.
+	snapshot.Targets = slices.Clone(snapshot.Targets)
+	for i := range snapshot.Targets {
+		snapshot.Targets[i].Warnings = nil
+	}
 	body, err := json.Marshal(snapshot)
 	if err != nil {
 		return "", err

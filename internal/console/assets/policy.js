@@ -1,8 +1,8 @@
 "use strict";
 
 (function (C) {
-  const P = {initialized: false, dirty: false, preview: null, selectionRevision: 0};
-  const fields = ["detectionEnabled","extendedRules","privilegeRules","rootExecAlerts","webExecutables","webServices","centralServiceScopes","serviceScopes","serviceRuleControls","shells","allowedPairs","responseMode","responseAction","riskThreshold","minConfidence","requiredCapabilities","monitoringEnabled","sampleInterval","processLimit","uninstallMode","validityHours","integrityEnabled","integrityTPM","integrityMode","integrityPaths","integrityPackageFiles","integrityConfigSHA"];
+  const P = {initialized: false, dirty: false, preview: null, selectionRevision: 0, integrityDraft: {}};
+  const fields = ["detectionEnabled","extendedRules","privilegeRules","rootExecAlerts","webExecutables","webServices","centralServiceScopes","serviceScopes","serviceRuleControls","shells","allowedPairs","responseMode","responseAction","riskThreshold","minConfidence","requiredCapabilities","monitoringEnabled","sampleInterval","processLimit","uninstallMode","validityHours","integrityPackageFiles","integrityConfigSHA"];
   const setValue = (id, value) => { const field = C.id(id); if (field.type === "checkbox") field.checked = Boolean(value); else field.value = value ?? ""; };
   const listValue = value => C.array(value).join("\n");
   const setDirty = dirty => { P.dirty = dirty; C.text("templateDirty", dirty ? "저장하지 않은 변경 사항" : "저장 상태와 일치"); };
@@ -81,7 +81,13 @@
     const mode = C.id("responseMode").value;
     C.id("serviceScopes").disabled = !C.id("centralServiceScopes").checked;
     C.id("rootExecAlerts").disabled = !C.id("privilegeRules").checked;
-    C.text("responseHelp", mode === "enforce" ? "자동 종료는 서비스에 영향을 줄 수 있습니다. 위험 점수·신뢰도·필수 기능과 에이전트 로컬 종료 허용을 모두 만족해야 실행됩니다." : mode === "would_block" ? "실제 프로세스를 종료하지 않고 대응 조건 충족 여부를 기록합니다. 종료 동작·기능 조건·임계값을 명시하세요." : "탐지 결과를 기록하며 프로세스를 종료하지 않습니다.");
+    const messages = {
+      observe: "탐지 결과를 기록하며 프로세스를 종료하지 않습니다.",
+      would_block: "실제 프로세스를 종료하지 않고 대응 조건 충족 여부를 기록합니다. 종료 동작·기능 조건·임계값을 명시하세요.",
+      enforce: "위험 점수·신뢰도·필수 기능과 에이전트 로컬 종료 허용을 모두 만족하면 실행 후 종료 신호를 보냅니다."
+    };
+    const onlyDetection = mode !== "observe" && C.id("extendedRules").checked;
+    C.text("responseHelp", onlyDetection ? "이 구성의 대응 대상 규칙은 0개입니다. 확장 프로필에서는 기본 웹 셸을 포함한 모든 규칙이 탐지 전용입니다." : messages[mode]);
     capabilityHelp();
   };
   const invalidatePreview = () => {
@@ -91,7 +97,19 @@
   const canDiscard = async () => !P.dirty || await C.confirm({title:"편집 내용 버리기",description:"저장하지 않은 템플릿 변경 사항이 있습니다. 다른 템플릿을 열면 현재 편집 내용이 사라집니다.",accept:"편집 내용 버리기"});
   const fillSettings = settings => {
     const d = C.object(settings.detection), r = C.object(settings.response), m = C.object(settings.monitoring), i = C.object(settings.integrity);
-    const values = {detectionEnabled:d.enabled,extendedRules:d.extended_process_rules,privilegeRules:d.privilege_rules,rootExecAlerts:d.root_exec_alerts||"suspicious",webExecutables:listValue(d.web_executables),webServices:listValue(d.web_services),shells:listValue(d.shells),allowedPairs:listValue(d.allowed_pairs),responseMode:r.mode,responseAction:r.action,riskThreshold:r.risk_threshold,minConfidence:r.min_confidence,requiredCapabilities:listValue(r.required_capabilities),monitoringEnabled:m.enabled,sampleInterval:m.sample_interval_seconds,processLimit:m.process_limit,uninstallMode:settings.uninstall_mode,validityHours:settings.validity_hours,integrityPackageFiles:i.package_files,integrityConfigSHA:i.config_sha256,integrityEnabled:i.enabled,integrityTPM:i.require_tpm,integrityMode:i.mode || "observe",integrityPaths:listValue(i.paths)};
+    P.integrityDraft = {enabled:i.enabled, mode:i.mode, require_tpm:i.require_tpm, paths:i.paths};
+    const draft = C.id("integrityDraftSummary");
+    if (i.enabled || i.require_tpm || i.mode === "enforce" || C.array(i.paths).length) {
+      draft.replaceChildren(C.facts([
+        ["초안 활성", i.enabled ? "예" : "아니요"],
+        ["TPM 조건", i.require_tpm ? "필수" : "미지정"],
+        ["검증 방식", i.mode === "enforce" ? "강제 (초안)" : "관찰 (초안)"],
+        ["검증 경로", C.array(i.paths).join("\n") || "미지정"]
+      ]));
+    } else {
+      draft.replaceChildren(C.el("p", "field-note", "저장된 추가 무결성 초안이 없습니다."));
+    }
+    const values = {detectionEnabled:d.enabled,extendedRules:d.extended_process_rules,privilegeRules:d.privilege_rules,rootExecAlerts:d.root_exec_alerts||"suspicious",webExecutables:listValue(d.web_executables),webServices:listValue(d.web_services),shells:listValue(d.shells),allowedPairs:listValue(d.allowed_pairs),responseMode:r.mode,responseAction:r.action,riskThreshold:r.risk_threshold,minConfidence:r.min_confidence,requiredCapabilities:listValue(r.required_capabilities),monitoringEnabled:m.enabled,sampleInterval:m.sample_interval_seconds,processLimit:m.process_limit,uninstallMode:settings.uninstall_mode,validityHours:settings.validity_hours,integrityPackageFiles:i.package_files,integrityConfigSHA:i.config_sha256};
     values.centralServiceScopes = Object.hasOwn(d, "service_observations");
     values.serviceScopes = JSON.stringify(d.service_observations || [], null, 2);
     values.serviceRuleControls = JSON.stringify(d.service_rule_controls || [], null, 2);
@@ -111,7 +129,7 @@
     if (keys.length > 32 || keys.some(key => key.length > 255 || !/^[A-Za-z0-9_@.\\-]+$/.test(key) || key === "." || key === "..")) throw new Error("필수 기능 조건은 32개까지입니다. 키는 255자 이내의 영문·숫자·점·하이픈·밑줄·@·역슬래시로 입력하세요.");
     if (unique.size !== keys.length) throw new Error("필수 기능 조건에 중복된 키가 있습니다. 고급 편집과 체크박스 선택을 확인하세요.");
     if (capabilityEditor && C.lines(capabilityEditor.custom.value).some(key => capabilityLabels.has(key))) throw new Error("목록에 있는 기능은 고급 키 입력 대신 해당 체크박스에서 선택하세요.");
-    return C.validateSettings(C.settingsFromValues(values));
+    return C.validateSettings(C.settingsFromValues(values, P.integrityDraft));
   };
   const renderLists = () => {
     C.text("ruleControlIDs", C.array(C.state.rule_ids).join(" · "));
@@ -145,10 +163,13 @@
   const showPreview = (preview, template) => {
     P.preview = preview; C.id("deploymentPreview").hidden = false;
     C.id("deployConfirm").checked = false; C.id("deployButton").disabled = true;
-    C.text("previewTargetCount", `${C.array(preview.targets).length}대`);
+    const targets = C.array(preview.targets);
+    C.text("previewTargetCount", `${targets.length}대`);
     const settings = C.object(template.settings), response = C.object(settings.response), detection = C.object(settings.detection);
     const modes = {observe:"탐지 전용",would_block:"모의 대응",enforce:"자동 종료"};
-    const notes = [C.el("p", "notice warning", `전체 정책 교체: '${template.name}' v${template.version} · ${modes[response.mode] || response.mode}. 기존 서버의 서비스·탐지 예외 목록은 자동으로 합쳐지지 않습니다.`), C.facts([["웹 서비스 대상",`${C.array(detection.web_services).length}개 · ${C.array(detection.web_services).join(" · ") || "명시 서비스 없음"}`],["웹 실행 파일",C.array(detection.web_executables).join(" · ") || "명시 실행 파일 없음"],["위험 점수 / 신뢰도",`${response.risk_threshold} / ${response.min_confidence}`],["에이전트 제거 정책",{allow:"허용",approval_required:"중앙 승인 필요",deny:"일반 제거 금지"}[settings.uninstall_mode] || "미확인"]])];
+    const onlyDetection = response.mode !== "observe" && detection.extended_process_rules;
+    const responseSummary = onlyDetection ? "대응 대상 규칙 0개" : modes[response.mode];
+    const notes = [C.el("p", "notice warning", `전체 정책 교체: '${template.name}' v${template.version} · ${responseSummary}. 기존 서버의 서비스·탐지 예외 목록은 자동으로 합쳐지지 않습니다.`), C.facts([["웹 서비스 대상",`${C.array(detection.web_services).length}개 · ${C.array(detection.web_services).join(" · ") || "명시 서비스 없음"}`],["웹 실행 파일",C.array(detection.web_executables).join(" · ") || "명시 실행 파일 없음"],["위험 점수 / 신뢰도",`${response.risk_threshold} / ${response.min_confidence}`],["에이전트 제거 정책",{allow:"허용 · 일회용 승인 필요",approval_required:"중앙 승인 필요",deny:"일반 제거 금지"}[settings.uninstall_mode] || "미확인"]])];
     const full = C.el("details","technical"), monitoring = C.object(settings.monitoring), integrity = C.object(settings.integrity);
     full.append(C.el("summary","","탐지 범위·대응 조건·모니터링 전체 확인"),C.facts([
       ["탐지 / 확장 규칙",`${detection.enabled?"사용":"사용 안 함"} / ${detection.extended_process_rules?"사용":"사용 안 함"}`],
@@ -159,13 +180,20 @@
       ["대응 동작",response.action==="terminate"?"프로세스 종료":"동작 없음"],["필수 기능 조건",capabilitySummary(response.required_capabilities)],
       ["자원 모니터링",`${monitoring.enabled?"사용":"사용 안 함"} · ${monitoring.sample_interval_seconds}초 간격 · 프로세스 ${monitoring.process_limit}개`],
       ["정책 유효 기간",`${settings.validity_hours}시간`],["패키지 파일 검사",integrity.package_files?"사용":"사용 안 함"],["추가 무결성 초안",integrity.enabled?"활성 초안 · 에이전트 적용 대기":"사용 안 함"]
-    ]),C.raw(settings,"배포할 설정 JSON 보기"));
+    ]),C.raw({detection, response, monitoring, uninstall_mode:settings.uninstall_mode, validity_hours:settings.validity_hours},"서명 정책 생성에 쓰는 설정 JSON"));
     notes.push(full);
     if (C.array(preview.pending_features).includes("integrity")) notes.push(C.el("p", "notice warning", "추가 무결성 설정(TPM·임의 경로·강제 검증)은 향후 적용을 위해 중앙 초안으로 보관합니다."));
-    for (const target of C.array(preview.targets)) for (const warning of C.array(target.warnings)) notes.push(C.el("p", "inline-note", `${target.agent_id}: ${warning}`));
-    if (response.mode === "enforce") notes.push(C.el("p", "notice error", "자동 종료 정책입니다. 실제 서비스 프로세스가 종료될 수 있으므로 대상과 예외를 확인하세요. 에이전트 로컬 종료 허용이 별도로 필요합니다."));
+    const warningCount = targets.filter(target => C.array(target.warnings).length).length;
+    if (warningCount) notes.push(C.el("p", "inline-note", `확인 사항이 있는 에이전트 ${warningCount}대 · 아래 대상별 내용을 확인하세요.`));
+    if (response.mode === "enforce" && !onlyDetection) notes.push(C.el("p", "notice error", "자동 종료 정책입니다. 실제 서비스 프로세스가 종료될 수 있으므로 대상과 예외를 확인하세요. 에이전트 로컬 종료 허용이 별도로 필요합니다."));
     C.id("previewWarnings").replaceChildren(...notes);
-    C.id("previewTargets").replaceChildren(C.table("배포 대상과 정책 리비전 변경",["에이전트","현재 → 다음 리비전","현재 등록 ID"],C.array(preview.targets).map(t=>[t.agent_id,`${t.current_revision} → ${t.next_revision}`,t.enrollment_id])));
+    const rows = targets.map(target => {
+      const warnings = C.array(target.warnings);
+      const list = C.el("ul", "compact-list");
+      for (const warning of warnings) list.append(C.el("li", "", warning));
+      return [target.agent_id, `${target.current_revision} → ${target.next_revision}`, target.enrollment_id, warnings.length ? list : "—"];
+    });
+    C.id("previewTargets").replaceChildren(C.table("배포 대상과 정책 리비전 변경", ["에이전트", "현재 → 다음 리비전", "현재 등록 ID", "확인 사항"], rows));
     C.policyTrialStart?.(preview);
     C.id("deploymentPreview").scrollIntoView({behavior:"instant",block:"nearest"});
   };

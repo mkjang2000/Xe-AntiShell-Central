@@ -32,7 +32,7 @@ function harness(keys = [], previewKeys = keys) {
     if (!document.nodes[id]) { const node = new Element("div", document); node.id = id; }
     return document.nodes[id];
   };
-  for (const id of ["detectionEnabled", "extendedRules", "privilegeRules", "centralServiceScopes", "monitoringEnabled", "integrityEnabled", "integrityTPM", "deployConfirm"]) document.getElementById(id).type = "checkbox";
+  for (const id of ["detectionEnabled", "extendedRules", "privilegeRules", "centralServiceScopes", "monitoringEnabled", "integrityPackageFiles", "deployConfirm"]) document.getElementById(id).type = "checkbox";
   const context = vm.createContext({document, Node: Element, structuredClone, AbortController, setTimeout, clearTimeout, location: {hash: ""}});
   vm.runInContext(source("model.js"), context); const C = context.XEC;
   const settings = {
@@ -83,6 +83,24 @@ test("capability editor preserves existing order, custom and unsupported keys on
   await h.submit();
   assert.deepEqual(h.errors, []); assert.deepEqual(h.requests[0].body.settings.response.required_capabilities, keys);
   assert.deepEqual(h.requests[0].body.settings, before.settings); assert.deepEqual(plain(h.template), before);
+});
+
+test("editing monitoring preserves an archived integrity draft and warns of zero response rules", async () => {
+  const h = harness(["observation.process_exec"]);
+  const draft = {enabled: true, mode: "enforce", require_tpm: true, paths: ["/etc/xe-antishell"]};
+  h.template.settings.integrity = draft;
+  await h.open();
+  assert.match(text(h.C.id("integrityDraftSummary")), /강제 \(초안\)/);
+  h.C.id("sampleInterval").value = "30";
+  h.C.id("extendedRules").checked = true;
+  h.C.id("responseMode").value = "enforce";
+  h.C.id("responseAction").value = "terminate";
+  h.C.id("templateForm").fire("input");
+  assert.match(text(h.C.id("responseHelp")), /대응 대상 규칙은 0개/);
+  await h.submit();
+  assert.deepEqual(h.errors, []);
+  assert.equal(h.requests[0].body.settings.monitoring.sample_interval_seconds, 30);
+  assert.deepEqual(h.requests[0].body.settings.integrity, draft);
 });
 
 test("explicit choices and recommended additions preserve custom gates and invalidate previews", async () => {
