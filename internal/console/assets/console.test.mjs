@@ -248,7 +248,7 @@ test("fleet shows live collection separately from passive diagnosis and preserve
   vm.runInContext(source("file-integrity.js"),context); vm.runInContext(source("fleet.js"),context);
   const report={probed_at:"2026-11-17T02:59:00Z",capabilities:{"collector.tetragon":{state:"unsupported",implementation:"implemented",runtime_state:"active",verified_at:"2026-11-17T02:59:55Z",reason:"neither tetragon nor tetra executable was found"}}};
   C.state.agents=[agent({heartbeat:{sent_at:"2026-11-17T02:59:50Z",status:{collector:"tetragon-json",health:"healthy",capability_report:report}}})];
-  C.selectedAgent="web-01";C.renderAgentDetail(false);
+  C.selectedAgent="web-01";C.showAgentTab("capabilities");
   const text=node=>typeof node==="string"?node:node.textContent+node.children.map(text).join("");
   const nodes=C.id("agentDetailBody").querySelectorAll("*"),row=nodes.find(node=>node.tagName==="tr"&&text(node).includes("실시간 실행 수집기"));
   assert.equal(row.children[2].children[0].textContent,"수집 동작 보고");
@@ -265,7 +265,7 @@ test("fleet presents interpreter, file and network scopes with separate evidence
     "observation.file":{state:"limited",implementation:"implemented",runtime_state:"active",verified_at:"2026-11-17T02:59:55Z"},
     "observation.network":{state:"limited",implementation:"implemented",runtime_state:"active",verified_at:"2026-11-17T02:00:00Z"}
   }};
-  C.state.agents=[agent({heartbeat:{sent_at:"2026-11-17T02:59:50Z",status:{capability_report:report}}})];C.selectedAgent="web-01";C.renderAgentDetail(false);
+  C.state.agents=[agent({heartbeat:{sent_at:"2026-11-17T02:59:50Z",status:{capability_report:report}}})];C.selectedAgent="web-01";C.showAgentTab("capabilities");
   const text=node=>typeof node==="string"?node:node.textContent+node.children.map(text).join("");
   const rows=C.id("agentDetailBody").querySelectorAll("*");
   const row=name=>rows.find(node=>node.tagName==="tr"&&text(node.children[0])===C.capabilityNames[name]);
@@ -284,7 +284,7 @@ test("fresh fleet snapshots retain static and inactive states while active evide
     "observation.process_lineage":cap("limited","unverified"),"kernel.ebpf":cap("limited","error")
   }},before=structuredClone(report);
   const current=agent({heartbeat:{sent_at:"2026-11-17T02:59:50Z",status:{capability_report:report}}});
-  C.state.agents=[current];C.selectedAgent="web-01";C.renderAgentDetail(false);
+  C.state.agents=[current];C.selectedAgent="web-01";C.showAgentTab("capabilities");
   const text=node=>typeof node==="string"?node:node.textContent+node.children.map(text).join("");
   const rowFor=name=>C.id("agentDetailBody").querySelectorAll("*").find(node=>node.tagName==="tr"&&text(node.children[0])===C.capabilityNames[name]);
   for(const [name,label] of [["host.platform","환경 조건 확인"],["kernel.btf","환경 조건 확인"],["kernel.cgroup","환경 조건 확인"],["collector.audit","사용 안 함"],["response.terminate","자동 종료 꺼짐"],["collector.tetragon","최신 상태 미확인"],["observation.process_exec","최신 상태 미확인"],["observation.process_lineage","동작 미확인"],["kernel.ebpf","확인 오류"]]){

@@ -209,10 +209,25 @@ LEFT JOIN policies p ON (p.agent_id,p.enrollment_id,p.revision)=(s.agent_id,s.en
 		s.consoleError(w, "state pending features", err)
 		return
 	}
+	responses, err := consoleDesiredResponses(r.Context(), tx)
+	if err != nil {
+		_ = tx.Rollback()
+		s.consoleError(w, "state response modes", err)
+		return
+	}
+	now := s.now().UTC()
+	detections, window, err := consoleRecentDetections(r.Context(), tx, now.Add(-consoleDetectionWindow), consoleDetectionScanLimit)
+	if err != nil {
+		_ = tx.Rollback()
+		s.consoleError(w, "state detections", err)
+		return
+	}
 	type consoleAgent struct {
 		Agent
 		PendingFeatures []string `json:"pending_features"`
 		consoleAssignment
+		consoleResponse
+		consoleDetection
 	}
 	consoleAgents := make([]consoleAgent, 0, len(agents))
 	for _, agent := range agents {
@@ -220,11 +235,10 @@ LEFT JOIN policies p ON (p.agent_id,p.enrollment_id,p.revision)=(s.agent_id,s.en
 		if features == nil {
 			features = []string{}
 		}
-		consoleAgents = append(consoleAgents, consoleAgent{Agent: agent, PendingFeatures: features, consoleAssignment: assignments[agent.ID]})
+		consoleAgents = append(consoleAgents, consoleAgent{Agent: agent, PendingFeatures: features, consoleAssignment: assignments[agent.ID], consoleResponse: responses[agent.ID], consoleDetection: detections[agent.ID]})
 	}
-	now := s.now().UTC()
 	_ = tx.Rollback()
-	respond(w, http.StatusOK, map[string]any{"server_time": now, "rule_ids": managed.BuiltinRuleIDs(), "agents": consoleAgents, "total_agents": totalAgents, "agents_truncated": totalAgents > len(consoleAgents), "groups": groups, "templates": templates, "defaults": defaultConsoleSettings(now), "enrollment": map[string]any{"central_url": s.enrollmentURL, "ready": s.enrollmentURL != ""}})
+	respond(w, http.StatusOK, map[string]any{"server_time": now, "rule_ids": managed.BuiltinRuleIDs(), "agents": consoleAgents, "total_agents": totalAgents, "agents_truncated": totalAgents > len(consoleAgents), "detections": window, "groups": groups, "templates": templates, "defaults": defaultConsoleSettings(now), "enrollment": map[string]any{"central_url": s.enrollmentURL, "ready": s.enrollmentURL != ""}})
 }
 
 func (s *Server) consoleSaveGroup(w http.ResponseWriter, r *http.Request) {

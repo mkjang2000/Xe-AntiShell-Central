@@ -56,11 +56,13 @@
     const link=document.createElement("a");link.href=url;link.download=secret.filename;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);C.text("secretStatus","발급 파일 다운로드를 요청했습니다. 저장한 파일을 안전하게 보관하세요.");
   });
   const navigate = () => {
-    const selected=location.hash.slice(1),view=Object.hasOwn(pages,selected)?selected:"overview";
+    const [selected,detail=""]=location.hash.slice(1).split("/"),view=Object.hasOwn(pages,selected)?selected:"overview";
+    let agentID="";if(view==="agents"&&detail){try{agentID=decodeURIComponent(detail);}catch(_){agentID="";}}
     C.view=view;const [title,eyebrow,description]=pages[view];
-    C.text("pageTitle",title);C.text("pageEyebrow",eyebrow);C.text("pageDescription",description);document.title=`${title} · Xe-AntiShell Central`;
+    C.text("pageTitle",title);C.text("pageEyebrow",eyebrow);C.text("pageDescription",description);document.title=`${agentID?`${agentID} · `:""}${title} · Xe-AntiShell Central`;
     for(const key of Object.keys(pages))C.id(`view-${key}`).hidden=key!==view;
     for(const link of C.id("navigation").querySelectorAll("[data-view]")){if(link.dataset.view===view)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");}
+    C.openAgentRoute?.(agentID);
     if(started&&view==="history")C.loadHistory(true);if(started&&view==="audit")C.loadAudit(true);if(started&&view==="accounts")C.loadAccounts();if(started&&view==="updates")C.loadUpdates?.();
   };
   C.navigate=navigate;

@@ -26,6 +26,7 @@ Xe-AntiShell-Central/
 │   ├── application_bindings.go   # Resolve template versions into signed service policies
 │   ├── application_status.go     # Match reported revisions and digests to immutable policies
 │   ├── console_assignments.go    # Template behind each desired revision and preview current-policy groups
+│   ├── console_detections.go     # Bounded per-agent 24-hour detection counts for the fleet list
 │   ├── service_inventory.go      # Validate current-enrollment listener inventory and expose it to operators
 │   ├── policy_service_scope.go   # Resolve and bind per-agent service sets during policy deployment
 │   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
@@ -58,6 +59,9 @@ Xe-AntiShell-Central/
 │       ├── policy-editor.css     # Policy workspace layout, mode cards and fleet table
 │       ├── application-policies.js # Workspace navigation and service policy bindings
 │       ├── applied-policies.js    # Fleet policy table and server-confirmed applied snapshots
+│       ├── fleet.js              # Agent list, recent detections, #agents/<id> detail route, tabs and issue summary
+│       ├── fleet.css             # Agent list cells, detail header, tabs and issue list
+│       ├── fleet.test.mjs        # State precedence, list cells, detection links, sorting, routing and tabs
 │       ├── host-boundary.js      # Agent-detail registration and host security capability evidence
 │       ├── file-integrity.js     # Operator file measurement details and comparison digests
 │       ├── privilege.js          # Root/credential findings and bounded before/after evidence presentation

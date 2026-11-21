@@ -1,0 +1,58 @@
+/* Agent list */
+.agent-table td { vertical-align: top; }
+.agent-table .agent-row { cursor: pointer; }
+.agent-table .agent-link { color: inherit; font-weight: 600; }
+.agent-table .agent-row:hover .agent-link { color: var(--blue); }
+.policy-name { display: block; font-weight: 600; }
+.policy-line, .usage-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.policy-line { margin-top: 4px; }
+.response-mode { color: var(--muted); font-size: 11px; }
+.response-mode.enforce { color: var(--red); font-weight: 600; }
+.usage { font-variant-numeric: tabular-nums; }
+.usage.warning { color: var(--warn); font-weight: 600; }
+.usage.danger { color: var(--red); font-weight: 700; }
+.usage.stale { color: var(--muted); }
+.detection-count { font-weight: 600; font-variant-numeric: tabular-nums; }
+.agent-badge .secondary { color: var(--muted); }
+
+/* Agent detail */
+#agentListView[hidden], #agentDetail[hidden] { display: none; }
+.back-link { display: inline-block; margin-bottom: 12px; font-size: 12px; font-weight: 600; }
+.agent-detail-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 16px; }
+.agent-detail-title { min-width: 0; }
+.agent-detail-title .eyebrow { margin-bottom: 4px; }
+.agent-detail-title h2 { margin: 0; font-size: 20px; letter-spacing: -.3px; overflow-wrap: anywhere; }
+/* The title receives focus only to announce the opened agent. */
+#agentDetailTitle:focus, #agentDetailTitle:focus-visible { outline: none; }
+.agent-detail-sub { margin: 4px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.agent-detail-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.agent-badges { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 14px 0 0; font-size: 12px; color: var(--muted); }
+.agent-badge { display: inline-flex; align-items: center; gap: 6px; }
+.agent-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 14px 0 18px; border-bottom: 1px solid var(--line); }
+.agent-tabs button { display: inline-flex; align-items: center; gap: 6px; margin-bottom: -1px; padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); }
+.agent-tabs button:hover { background: transparent; color: var(--ink); border-bottom-color: var(--line); }
+.agent-tabs button[aria-pressed="true"] { color: var(--blue); border-bottom-color: var(--blue); }
+[data-theme="dark"] .agent-tabs button, [data-theme="dark"] .agent-tabs button:hover { background: transparent; }
+.tab-count { min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--warn-bg); color: var(--warn); font-size: 11px; line-height: 18px; text-align: center; }
+.agent-tab-panel > .section-heading:first-child,
+.agent-tab-panel > .service-inventory-result:first-child > .section-heading:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.issue-list { display: grid; gap: 6px; margin: 0 0 6px; padding: 0; list-style: none; }
+.issue { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-left: 3px solid var(--warn); background: var(--surface); }
+.issue.danger { border-left-color: var(--red); }
+.issue-text { flex: 1; min-width: 0; }
+.issue-text strong { display: block; font-size: 12px; overflow-wrap: anywhere; }
+.issue-text small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.fact-policy { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.policy-state-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 6px; font-size: 12px; }
+.resource-metric.warning strong { color: var(--warn); }
+.resource-metric.danger strong { color: var(--red); }
+.capability-counts { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+.mount-cell small { max-width: 420px; white-space: normal; overflow-wrap: anywhere; }
+.detail-section .detail-section { margin-top: 8px; }
+
+@media (max-width: 620px) {
+  .agent-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  .agent-tabs button { flex-shrink: 0; padding: 8px 10px; }
+  .issue { flex-wrap: wrap; }
+  .agent-detail-title h2 { font-size: 18px; }
+}

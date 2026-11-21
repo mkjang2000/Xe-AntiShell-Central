@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 )
 
 // consolePreviewComparisons bounds how many distinct current settings one
@@ -18,6 +19,59 @@ const consolePreviewComparisons = 32
 type consoleAssignment struct {
 	PolicyID      string `json:"desired_policy_id,omitempty"`
 	TemplateState string `json:"policy_template_state,omitempty"`
+}
+
+// consoleResponse is the signed desired revision's default response mode and
+// the distinct service-binding modes that differ from it, weakest first. It
+// covers console and directly issued policies alike.
+type consoleResponse struct {
+	Mode         string   `json:"desired_response_mode,omitempty"`
+	ServiceModes []string `json:"desired_service_response_modes,omitempty"`
+}
+
+var responseModeStrength = map[string]int{"observe": 0, "would_block": 1, "enforce": 2}
+
+func desiredResponse(mode string, applicationModes []string) consoleResponse {
+	response := consoleResponse{Mode: mode}
+	seen := map[string]bool{mode: true}
+	for _, other := range applicationModes {
+		if other != "" && !seen[other] {
+			seen[other] = true
+			response.ServiceModes = append(response.ServiceModes, other)
+		}
+	}
+	sort.SliceStable(response.ServiceModes, func(i, j int) bool {
+		return responseModeStrength[response.ServiceModes[i]] < responseModeStrength[response.ServiceModes[j]]
+	})
+	return response
+}
+
+// consoleDesiredResponses reads response modes from each agent's signed
+// desired policy; SQLite extracts the few fields so whole policies are not
+// decoded on every console refresh.
+func consoleDesiredResponses(ctx context.Context, tx *sql.Tx) (map[string]consoleResponse, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT a.agent_id,COALESCE(json_extract(CAST(p.signed_json AS TEXT),'$.policy.response.mode'),''),
+(SELECT json_group_array(json_extract(value,'$.response.mode')) FROM json_each(CAST(p.signed_json AS TEXT),'$.policy.applications'))
+FROM agents a JOIN policies p ON (p.agent_id,p.enrollment_id,p.revision)=(a.agent_id,a.enrollment_id,a.desired_policy_revision)
+WHERE a.desired_policy_revision>0 ORDER BY a.agent_id LIMIT 1000`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	responses := make(map[string]consoleResponse)
+	for rows.Next() {
+		var id, mode string
+		var applications []byte
+		if err = rows.Scan(&id, &mode, &applications); err != nil {
+			return nil, err
+		}
+		var modes []string
+		if err = json.Unmarshal(applications, &modes); err != nil {
+			return nil, err
+		}
+		responses[id] = desiredResponse(mode, modes)
+	}
+	return responses, rows.Err()
 }
 
 func assignedTemplate(policyID string, deployed ConsoleSettings, latest map[string][]byte) (consoleAssignment, error) {

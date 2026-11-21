@@ -73,8 +73,14 @@
   };
   C.loadHistory=(reset=false)=>{configure();const view=C.id("historyKind").value;return load("history",history,view,view==="errors"?"/api/errors":"/api/history",view==="errors"?errorCard:recordCard,reset);};
   C.loadAudit=(reset=false)=>load("audit",audit,"audit","/api/audit",item=>{const card=C.el("article","record"),head=C.el("div","record-head");head.append(C.el("strong","record-title",item.kind),C.el("time","",C.time(item.created_at)));card.append(head,C.el("p","record-summary",item.agent_id||"중앙 전체"),C.raw(item.details,"관리 작업 상세"));return card;},reset);
+  const period=()=>{const value=C.id("historyPeriod").value;if(value==="custom")return;const now=C.now(),start=value==="today"?new Date(new Date(now).setHours(0,0,0,0)).getTime():now-({"24h":86400000,"7d":604800000,"30d":2592000000}[value]||0);C.id("historyFrom").value=value==="all"?"":localInput(start);C.id("historyUntil").value="";};
+  // Opens the history view with only the given conditions; type and search clear.
+  C.openHistory=({view="detections",agent="",range="7d"}={})=>{
+    C.id("historyKind").value=view;C.id("historyAgent").value=agent;C.id("historyType").value="";C.id("historySearch").value="";C.id("historyPeriod").value=range;period();
+    // A hash change loads the view through navigation; otherwise reload here.
+    if(globalThis.location.hash!=="#history")globalThis.location.hash="history";else C.loadHistory(true);
+  };
   C.initHistory=()=>{
-    const period=()=>{const value=C.id("historyPeriod").value;if(value==="custom")return;const now=C.now(),start=value==="today"?new Date(new Date(now).setHours(0,0,0,0)).getTime():now-({"24h":86400000,"7d":604800000,"30d":2592000000}[value]||0);C.id("historyFrom").value=value==="all"?"":localInput(start);C.id("historyUntil").value="";};
     C.id("historyPeriod").addEventListener("change",period);period();
     for(const id of ["historyFrom","historyUntil"])C.id(id).addEventListener("change",()=>{C.id("historyPeriod").value="custom";});
     C.id("historyKind").addEventListener("change",()=>{C.id("historyType").value="";C.loadHistory(true);});

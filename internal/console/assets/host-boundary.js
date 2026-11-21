@@ -12,13 +12,22 @@
     return "미확인";
   }
 
+  const evidence = agent => {
+    const hb = C.object(agent.heartbeat);
+    const bound = Boolean(agent.enrollment_id) && hb.agent_id === agent.agent_id && hb.enrollment_id === agent.enrollment_id;
+    return {hb, bound, current: bound && !agent.revoked && C.fresh(hb.sent_at)};
+  };
+
+  // Local termination opt-in as the current registration's heartbeat reports it.
+  C.localTermination = agent => {
+    const {hb, current} = evidence(agent);
+    return current ? localTermination(C.object(C.object(C.object(hb.status).capability_report).capabilities), hb.sent_at) : "미확인";
+  };
+
   // Facts for the agent detail: the central registration next to what the
   // current registration's latest authenticated heartbeat reported.
   C.hostBoundaryFacts = agent => {
-    const hb = C.object(agent.heartbeat);
-    const bound = Boolean(agent.enrollment_id) && hb.agent_id === agent.agent_id && hb.enrollment_id === agent.enrollment_id;
-    const current = bound && !agent.revoked && C.fresh(hb.sent_at);
-    const report = C.object(C.object(hb.status).capability_report);
+    const {hb, bound, current} = evidence(agent);
     const policy = C.object(hb.policy_status);
     const results = {local: "로컬 설정 사용", applied: "적용", rejected: "거절", stale: "유효기간 경과"};
     const status = current && Object.hasOwn(results, policy.result) ? results[policy.result] : "미확인";
@@ -30,7 +39,7 @@
       ["하트비트 상태", current ? "최근 보고" : C.connection(agent).key === "stale" && bound ? "보고 지연" : "현재 상태 미확인"],
       ["에이전트 적용 리비전", current ? revision(policy.active_revision) : "미확인"],
       ["에이전트 정책 적용 결과", status],
-      ["프로세스 종료 로컬 허용", current ? localTermination(C.object(report.capabilities), hb.sent_at) : "미확인"]
+      ["프로세스 종료 로컬 허용", C.localTermination(agent)]
     ];
   };
 })(globalThis.XEC);

@@ -379,7 +379,7 @@
   C.updateState = next => {
     const serverTime = Date.parse(next.server_time);
     if (Number.isFinite(serverTime)) C.clockOffset = serverTime - Date.now();
-    C.state = {rule_ids: C.array(next.rule_ids), agents: C.array(next.agents), groups: C.array(next.groups), templates: C.array(next.templates), defaults: C.object(next.defaults), enrollment: {ready: C.object(next.enrollment).ready === true, central_url: C.object(next.enrollment).central_url || ""}, server_time: next.server_time};
+    C.state = {rule_ids: C.array(next.rule_ids), agents: C.array(next.agents), groups: C.array(next.groups), templates: C.array(next.templates), defaults: C.object(next.defaults), enrollment: {ready: C.object(next.enrollment).ready === true, central_url: C.object(next.enrollment).central_url || ""}, detections: {since: C.object(next.detections).since || "", truncated: C.object(next.detections).truncated === true}, server_time: next.server_time};
     C.listeners.forEach(fn => fn());
   };
   if (typeof module !== "undefined" && module.exports) module.exports = C;
