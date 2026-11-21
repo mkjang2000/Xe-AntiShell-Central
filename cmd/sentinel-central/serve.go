@@ -105,6 +105,8 @@ func serve(args []string, stderr io.Writer) error {
 		return err
 	}
 	if *panelAddress != "" {
+		options.SiteExists = store.SiteExists
+		options.OnAuthorizationLoader = backend.SetRemoteRemovalAccountLoader
 		authPath := filepath.Join(*directory, "panel-auth.json")
 		credentials, loadErr := console.LoadCredentials(authPath)
 		if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {

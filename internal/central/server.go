@@ -1,6 +1,7 @@
 package central
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -12,18 +13,22 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/mkjang2000/Xe-AntiShell-Central/internal/console"
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 )
 
 type Server struct {
+	siteMu           sync.RWMutex
 	store            *Store
 	material         *Material
 	logger           *slog.Logger
 	now              func() time.Time
 	enrollmentURL    string
 	updateBlobs      *updateBlobStore
+	removalActors    func(context.Context, string) (console.Account, error)
 	updatePublishers map[string]ed25519.PublicKey
 	updateGitHub     *updateGitHubClient
 }
@@ -49,6 +54,10 @@ func (s *Server) AgentHandler() http.Handler {
 	mux.HandleFunc("POST /v1/ingest", s.withAgent(s.ingest))
 	mux.HandleFunc("POST /v1/heartbeat", s.withAgent(s.heartbeat))
 	mux.HandleFunc("GET /v1/policy", s.withAgent(s.policy))
+	mux.HandleFunc("GET /v1/agent-configuration", s.withAgent(s.agentConfiguration))
+	mux.HandleFunc("GET /v1/remote-removal", s.withAgent(s.agentRemoteRemoval))
+	mux.HandleFunc("POST /v1/remote-removal/claim", s.withAgent(s.agentRemoteRemovalClaim))
+	mux.HandleFunc("POST /v1/remote-removal/report", s.agentRemoteRemovalReport)
 	mux.HandleFunc("POST /v1/update/status", s.withAgent(s.updateStatus))
 	mux.HandleFunc("GET /v1/integrity/files", s.withAgent(s.fileIntegrityDesired))
 	mux.HandleFunc("POST /v1/integrity/files", s.withAgent(s.fileIntegrityReceived))
@@ -78,19 +87,26 @@ func (s *Server) AdminHandler() http.Handler {
 	}))
 }
 
+func verifiedAgentIdentity(r *http.Request) (authenticatedAgent, string, string) {
+	if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 {
+		return authenticatedAgent{}, "", "verified agent certificate required"
+	}
+	cert := r.TLS.PeerCertificates[0]
+	if len(cert.Subject.OrganizationalUnit) != 1 {
+		return authenticatedAgent{}, "", "invalid enrollment identity"
+	}
+	agent := authenticatedAgent{ID: cert.Subject.CommonName, EnrollmentID: cert.Subject.OrganizationalUnit[0]}
+	return agent, cert.SerialNumber.Text(16), ""
+}
+
 func (s *Server) withAgent(handler func(http.ResponseWriter, *http.Request, authenticatedAgent)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 {
-			respond(w, http.StatusUnauthorized, map[string]string{"error": "verified agent certificate required"})
+		agent, serial, reason := verifiedAgentIdentity(r)
+		if reason != "" {
+			respond(w, http.StatusUnauthorized, map[string]string{"error": reason})
 			return
 		}
-		cert := r.TLS.PeerCertificates[0]
-		if len(cert.Subject.OrganizationalUnit) != 1 {
-			respond(w, http.StatusUnauthorized, map[string]string{"error": "invalid enrollment identity"})
-			return
-		}
-		agent := authenticatedAgent{ID: cert.Subject.CommonName, EnrollmentID: cert.Subject.OrganizationalUnit[0]}
-		if err := s.store.Authenticate(r.Context(), agent.ID, agent.EnrollmentID, cert.SerialNumber.Text(16)); err != nil {
+		if err := s.store.Authenticate(r.Context(), agent.ID, agent.EnrollmentID, serial); err != nil {
 			respond(w, http.StatusUnauthorized, map[string]string{"error": "agent identity rejected"})
 			return
 		}

@@ -15,7 +15,7 @@ import (
 const centralUpdateBase = "/api/central-update/"
 
 func (s *Server) consoleSelfUpdate(w http.ResponseWriter, r *http.Request) {
-	actor, ok := updateConsoleActor(w, r, true)
+	actor, ok := updateConsoleActor(w, r)
 	if !ok {
 		return
 	}

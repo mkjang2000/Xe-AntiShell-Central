@@ -121,7 +121,10 @@ func (s *Store) initializeSchema(ctx context.Context, version int) error {
 			}
 		}
 	}
-	if _, err = tx.ExecContext(ctx, consoleSchema+reviewSchema); err != nil {
+	if _, err = tx.ExecContext(ctx, consoleSchema+reviewSchema+historySchema); err != nil {
+		return err
+	}
+	if err = initializeSites(ctx, tx); err != nil {
 		return err
 	}
 	if err = initializeErrorHistory(ctx, tx); err != nil {
@@ -133,7 +136,10 @@ func (s *Store) initializeSchema(ctx context.Context, version int) error {
 	if _, err = tx.ExecContext(ctx, trialSchema+trialTicketSchema); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, updateSchema+fileIntegritySchema); err != nil {
+	if _, err = tx.ExecContext(ctx, updateSchema+fileIntegritySchema+agentConfigurationSchema+remoteRemovalSchema); err != nil {
+		return err
+	}
+	if err = initializeSiteRolloutScope(ctx, tx); err != nil {
 		return err
 	}
 	var updateVersion int
@@ -174,6 +180,7 @@ func (s *Store) Close() error {
 type Agent struct {
 	ID                    string          `json:"agent_id"`
 	EnrollmentID          string          `json:"enrollment_id"`
+	SiteID                string          `json:"site_id"`
 	Hostname              string          `json:"hostname"`
 	EnrolledAt            time.Time       `json:"enrolled_at"`
 	LastSeenAt            *time.Time      `json:"last_seen_at,omitempty"`
@@ -197,7 +204,7 @@ func (s *Store) CreateEnrollmentToken(ctx context.Context, agentID string, lifet
 	if err = writePrivateExclusive(outputPath, []byte(token+"\n")); err != nil {
 		return err
 	}
-	if _, err = s.db.ExecContext(ctx, "INSERT INTO enrollment_tokens(token_hash,agent_id,expires_at_ns) VALUES(?,?,?)", hex.EncodeToString(hash[:]), agentID, time.Now().UTC().Add(lifetime).UnixNano()); err != nil {
+	if _, err = s.db.ExecContext(ctx, "INSERT INTO enrollment_tokens(token_hash,agent_id,expires_at_ns,site_id) VALUES(?,?,?,COALESCE((SELECT site_id FROM agents WHERE agent_id=?),'default'))", hex.EncodeToString(hash[:]), agentID, time.Now().UTC().Add(lifetime).UnixNano(), agentID); err != nil {
 		_ = os.Remove(outputPath)
 		return err
 	}
@@ -214,11 +221,11 @@ func (s *Store) Enroll(ctx context.Context, token, agentID, csr string, material
 	}
 	defer tx.Rollback()
 	hash := sha256.Sum256([]byte(token))
-	var tokenAgent string
+	var tokenAgent, tokenSite string
 	var expiry int64
 	var used int
 	var oldCSRHash, oldEnrollment, oldCertificate string
-	err = tx.QueryRowContext(ctx, "SELECT agent_id,expires_at_ns,used,csr_hash,enrollment_id,certificate_pem FROM enrollment_tokens WHERE token_hash=?", hex.EncodeToString(hash[:])).Scan(&tokenAgent, &expiry, &used, &oldCSRHash, &oldEnrollment, &oldCertificate)
+	err = tx.QueryRowContext(ctx, "SELECT agent_id,site_id,expires_at_ns,used,csr_hash,enrollment_id,certificate_pem FROM enrollment_tokens WHERE token_hash=?", hex.EncodeToString(hash[:])).Scan(&tokenAgent, &tokenSite, &expiry, &used, &oldCSRHash, &oldEnrollment, &oldCertificate)
 	if err != nil || tokenAgent != agentID || now.UnixNano() >= expiry {
 		return "", "", ErrUnauthorized
 	}
@@ -228,7 +235,7 @@ func (s *Store) Enroll(ctx context.Context, token, agentID, csr string, material
 			return "", "", ErrUnauthorized
 		}
 		var active int
-		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM agents WHERE agent_id=? AND enrollment_id=? AND revoked=0", agentID, oldEnrollment).Scan(&active); err != nil || active != 1 {
+		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM agents WHERE agent_id=? AND enrollment_id=? AND site_id=? AND revoked=0", agentID, oldEnrollment, tokenSite).Scan(&active); err != nil || active != 1 {
 			return "", "", ErrUnauthorized
 		}
 		// An acknowledgement can be lost after the token is consumed. Only
@@ -246,8 +253,16 @@ func (s *Store) Enroll(ctx context.Context, token, agentID, csr string, material
 	if _, err = tx.ExecContext(ctx, "UPDATE enrollment_tokens SET used=1,csr_hash=?,enrollment_id=?,certificate_pem=? WHERE token_hash=? AND used=0", hex.EncodeToString(csrHash[:]), enrollmentID, string(cert), hex.EncodeToString(hash[:])); err != nil {
 		return "", "", err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO agents(agent_id,enrollment_id,cert_serial,enrolled_at_ns) VALUES(?,?,?,?) ON CONFLICT(agent_id) DO UPDATE SET enrollment_id=excluded.enrollment_id,cert_serial=excluded.cert_serial,enrolled_at_ns=excluded.enrolled_at_ns,revoked=0,last_seen_at_ns=0,heartbeat_json=NULL,desired_policy_revision=0`, agentID, enrollmentID, serialValue, now.UnixNano()); err != nil {
+	updated, err := tx.ExecContext(ctx, `INSERT INTO agents(agent_id,enrollment_id,cert_serial,enrolled_at_ns,site_id) VALUES(?,?,?,?,?) ON CONFLICT(agent_id) DO UPDATE SET enrollment_id=excluded.enrollment_id,cert_serial=excluded.cert_serial,enrolled_at_ns=excluded.enrolled_at_ns,revoked=0,last_seen_at_ns=0,heartbeat_json=NULL,desired_policy_revision=0 WHERE agents.site_id=excluded.site_id`, agentID, enrollmentID, serialValue, now.UnixNano(), tokenSite)
+	if err != nil {
 		return "", "", err
+	}
+	count, err := updated.RowsAffected()
+	if err != nil {
+		return "", "", err
+	}
+	if count != 1 {
+		return "", "", ErrUnauthorized
 	}
 	if err = appendAudit(ctx, tx, agentID, "agent.enrolled", map[string]string{"enrollment_id": enrollmentID}, now); err != nil {
 		return "", "", err
@@ -277,7 +292,13 @@ func (s *Store) Agents(ctx context.Context) ([]Agent, error) {
 func listAgents(ctx context.Context, query interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }) ([]Agent, error) {
-	rows, err := query.QueryContext(ctx, "SELECT agent_id,enrollment_id,hostname,enrolled_at_ns,last_seen_at_ns,revoked,heartbeat_json,desired_policy_revision FROM agents ORDER BY agent_id LIMIT 1000")
+	statement := "SELECT agent_id,enrollment_id,site_id,hostname,enrolled_at_ns,last_seen_at_ns,revoked,heartbeat_json,desired_policy_revision FROM agents"
+	var args []any
+	if site := selectedSite(ctx); site != "" {
+		statement += " WHERE site_id=?"
+		args = append(args, site)
+	}
+	rows, err := query.QueryContext(ctx, statement+" ORDER BY agent_id LIMIT 1000", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +309,7 @@ func listAgents(ctx context.Context, query interface {
 		var heartbeat []byte
 		var enrolled, last int64
 		var revoked int
-		if err = rows.Scan(&agent.ID, &agent.EnrollmentID, &agent.Hostname, &enrolled, &last, &revoked, &heartbeat, &agent.DesiredPolicyRevision); err != nil {
+		if err = rows.Scan(&agent.ID, &agent.EnrollmentID, &agent.SiteID, &agent.Hostname, &enrolled, &last, &revoked, &heartbeat, &agent.DesiredPolicyRevision); err != nil {
 			return nil, err
 		}
 		agent.EnrolledAt = time.Unix(0, enrolled).UTC()
@@ -309,7 +330,7 @@ func (s *Store) Revoke(ctx context.Context, agentID string, now time.Time) error
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, "UPDATE agents SET revoked=1 WHERE agent_id=?", agentID)
+	result, err := tx.ExecContext(ctx, "UPDATE agents SET revoked=1 WHERE agent_id=? AND (?='' OR site_id=?)", agentID, selectedSite(ctx), selectedSite(ctx))
 	if err != nil {
 		return err
 	}
@@ -324,11 +345,23 @@ func (s *Store) Revoke(ctx context.Context, agentID string, now time.Time) error
 }
 
 func appendAudit(ctx context.Context, tx *sql.Tx, agentID, kind string, details any, now time.Time) error {
+	siteID := selectedSite(ctx)
+	if agentID != "" && siteID == "" {
+		registeredSite, err := agentSite(ctx, tx, agentID)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		siteID = registeredSite
+	}
+	return appendSiteAudit(ctx, tx, siteID, agentID, kind, details, now)
+}
+
+func appendSiteAudit(ctx context.Context, tx *sql.Tx, siteID, agentID, kind string, details any, now time.Time) error {
 	body, err := json.Marshal(details)
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO audit(agent_id,kind,created_at_ns,details_json) VALUES(?,?,?,?)", agentID, kind, now.UnixNano(), body)
+	_, err = tx.ExecContext(ctx, "INSERT INTO audit(agent_id,kind,created_at_ns,details_json,site_id) VALUES(?,?,?,?,NULLIF(?,''))", agentID, kind, now.UnixNano(), body, siteID)
 	return err
 }
 

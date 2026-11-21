@@ -151,7 +151,7 @@ func (s *Server) importUpdateGitHub(ctx context.Context, tag, name, actor string
 }
 
 func (s *Server) consoleUpdateGitHubReleases(w http.ResponseWriter, r *http.Request) {
-	if _, ok := updateConsoleActor(w, r, false); !ok {
+	if _, ok := updateConsoleActor(w, r); !ok {
 		return
 	}
 	catalog, err := s.updateGitHub.catalog(r.Context())
@@ -162,7 +162,7 @@ func (s *Server) consoleUpdateGitHubReleases(w http.ResponseWriter, r *http.Requ
 	respond(w, http.StatusOK, catalog)
 }
 func (s *Server) consoleImportUpdateGitHub(w http.ResponseWriter, r *http.Request) {
-	actor, ok := updateConsoleActor(w, r, true)
+	actor, ok := updateConsoleActor(w, r)
 	if !ok {
 		return
 	}

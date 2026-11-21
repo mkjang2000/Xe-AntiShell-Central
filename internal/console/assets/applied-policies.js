@@ -71,7 +71,7 @@
   // heartbeat evidence as the agent list. Details load for one selected row.
   let selected = "";
   const chosen = new Set();
-  const writable = () => ["admin", "operator"].includes(C.session?.role);
+  const writable = () => C.session?.permissions ? C.can("policies.deploy") : ["admin", "operator"].includes(C.session?.role);
   const categories = {applied: ["적용 완료", "good"], pending: ["적용 대기", "warning"], error: ["오류", "danger"], unknown: ["확인 필요", "neutral"], none: ["정책 없음", "neutral"], outdated: ["재배포 필요", "warning"]};
   C.assignmentCategory = agent => {
     const state = C.policyState(agent);

@@ -82,6 +82,7 @@ type consoleHistoryCursor struct {
 	ID          string `json:"id"`
 	FilterAgent string `json:"filter_agent"`
 	FilterKind  string `json:"filter_kind"`
+	FilterSite  string `json:"filter_site,omitempty"`
 }
 
 func (s *Server) consoleHistory(w http.ResponseWriter, r *http.Request) {
@@ -99,13 +100,15 @@ func (s *Server) consoleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	before := r.URL.Query().Get("before")
 	var cursor consoleHistoryCursor
+	siteID := selectedSite(r.Context())
 	if before != "" {
 		body, err := base64.RawURLEncoding.DecodeString(before)
-		if len(before) > 2048 || err != nil || managed.DecodeStrict(body, 1536, &cursor) != nil || cursor.FilterAgent != agentID || cursor.FilterKind != kind || cursor.AgentID == "" || cursor.ID == "" {
+		if len(before) > 2048 || err != nil || managed.DecodeStrict(body, 1536, &cursor) != nil || cursor.FilterAgent != agentID || cursor.FilterKind != kind || cursor.FilterSite != siteID || cursor.AgentID == "" || cursor.ID == "" {
 			s.historyError(w, r, "history cursor", fmt.Errorf("%w: 이력 페이지 정보가 잘못되었습니다", ErrInvalid))
 			return
 		}
 	}
+	cursor.FilterSite = siteID
 	query, args := buildLegacyHistoryQuery(agentID, kind, cursor, limit)
 	page, hasMore, err := s.store.readHistoryPage(r.Context(), query, args, limit, historyResponseBytes, false)
 	if err != nil {
@@ -116,7 +119,7 @@ func (s *Server) consoleHistory(w http.ResponseWriter, r *http.Request) {
 	var next consoleHistoryCursor
 	for _, row := range page {
 		items = append(items, row.record)
-		next = consoleHistoryCursor{At: row.at, AgentID: row.record.AgentID, Kind: row.source, ID: row.record.ID, FilterAgent: agentID, FilterKind: kind}
+		next = consoleHistoryCursor{At: row.at, AgentID: row.record.AgentID, Kind: row.source, ID: row.record.ID, FilterAgent: agentID, FilterKind: kind, FilterSite: siteID}
 	}
 	if hasMore {
 		body, err := json.Marshal(next)
@@ -131,7 +134,7 @@ func (s *Server) consoleHistory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) consoleAudit(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	if query.Get("view") == "audit" || query.Has("from") || query.Has("until") || query.Has("agent_id") || query.Has("type") || query.Has("q") {
+	if selectedSite(r.Context()) != "" || query.Get("view") == "audit" || query.Has("from") || query.Has("until") || query.Has("agent_id") || query.Has("type") || query.Has("q") {
 		s.consoleFilteredAudit(w, r)
 		return
 	}

@@ -29,6 +29,9 @@ Xe-AntiShell-Central/
 │   ├── console_detections.go     # Bounded per-agent 24-hour detection counts for the fleet list
 │   ├── service_inventory.go      # Validate current-enrollment listener inventory and expose it to operators
 │   ├── policy_service_scope.go   # Resolve and bind per-agent service sets during policy deployment
+│   ├── agent_configuration*.go    # Preview, sign and deliver independent per-enrollment operations settings
+│   ├── remote_removal*.go         # Preview and verify signed RPM decommission per enrollment and site
+│   ├── sites*.go                 # Site inventory, transfers and access boundaries
 │   ├── history_filters.go        # Validated date/search filters and condition-bound cursors
 │   ├── delivery_receipts.go      # Compact per-stream replay checks and schema 4 cursor migration
 │   ├── capacity.go               # On-demand read-only storage and expiry statistics
@@ -50,6 +53,7 @@ Xe-AntiShell-Central/
 │   ├── password_policy.go        # New password composition, Unicode length and legacy-login compatibility
 │   ├── accounts_store.go         # Persistent accounts, final-admin guard and account audit
 │   ├── accounts_auth.go          # Per-request identity and role authorization
+│   ├── rbac*.go                  # Permission catalog, role definitions and account site grants
 │   ├── accounts_http.go          # Account/password administration APIs
 │   └── assets/                    # Korean fleet, policies, histories and dark/light themes
 │       ├── policy.js             # Sectioned policy editor, save bar, duplicate and deployment steps
@@ -62,6 +66,9 @@ Xe-AntiShell-Central/
 │       ├── fleet.js              # Agent list, recent detections, #agents/<id> detail route, tabs and issue summary
 │       ├── fleet.css             # Agent list cells, detail header, tabs and issue list
 │       ├── fleet.test.mjs        # State precedence, list cells, detection links, sorting, routing and tabs
+│       ├── remote-removal.js     # Permission-gated RPM decommission in agent detail
+│       ├── removal-batches.js    # Agent, group and site removal previews and results
+│       ├── access-management.js  # Site selection, role catalog and per-account grants
 │       ├── host-boundary.js      # Agent-detail registration and host security capability evidence
 │       ├── file-integrity.js     # Operator file measurement details and comparison digests
 │       ├── privilege.js          # Root/credential findings and bounded before/after evidence presentation
@@ -93,6 +100,8 @@ Xe-AntiShell-Central/
 │   ├── plans/minimal-observation-history.md
 │   ├── plans/history-query-performance.md
 │   ├── plans/password-policy.md
+│   ├── plans/site-isolation.md
+│   ├── plans/remote-agent-removal.md
 │   ├── plans/policy-and-agent-configuration.md
 │   ├── plans/application-policies.md
 │   ├── plans/listening-service-policy.md
@@ -116,6 +125,8 @@ Agent enrollment token + CSR → scoped certificate and enrollment generation
 Agent mTLS batch → authenticated transaction → durable ACK
 Loopback operator API → signed policy / removal grant / revocation
 Console session → current account/role → CSRF → group/template editor → preview → atomic signed deployment
+Agent configuration preview → actor-approved revisions → mTLS assignment → heartbeat effective settings
+Administrator removal order → enrolled agent claim → one-use grant → verified RPM result → exact-generation revocation
 Heartbeat → latest state + deduplicated error transitions → filtered history views
 Authenticated console → installation code with public CA → agent wizard → verified TLS enrollment
 ```

@@ -77,10 +77,10 @@ func (s *Server) consoleErrorHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := `SELECT id,agent_id,kind,transition,category,recorded_at_ns FROM console_agent_errors
-WHERE (?='' OR agent_id=?) AND (?='' OR kind=?) AND (?=0 OR recorded_at_ns>=?) AND (?=0 OR recorded_at_ns<?)
+WHERE (?='' OR site_id=?) AND (?='' OR agent_id=?) AND (?='' OR kind=?) AND (?=0 OR recorded_at_ns>=?) AND (?=0 OR recorded_at_ns<?)
 AND (?='' OR instr(lower(kind||' '||transition||' '||category),lower(?))>0)
 AND (?=0 OR (recorded_at_ns,id)<(?,?)) ORDER BY recorded_at_ns DESC,id DESC LIMIT ?`
-	args := []any{filter.Agent, filter.Agent, filter.Type, filter.Type, from, from, until, until, filter.Search, filter.Search, cursor.At, cursor.At, cursor.Item, limit + 1}
+	args := []any{filter.SiteID, filter.SiteID, filter.Agent, filter.Agent, filter.Type, filter.Type, from, from, until, until, filter.Search, filter.Search, cursor.At, cursor.At, cursor.Item, limit + 1}
 	var body []byte
 	err = s.store.historyDB.QueryRowContext(r.Context(), "SELECT json_group_array(json_object('id',id,'agent',agent_id,'kind',kind,'transition',transition,'category',category,'at',recorded_at_ns)) FROM ("+query+")", args...).Scan(&body)
 	if err != nil {
@@ -137,10 +137,10 @@ func (s *Server) consoleFilteredAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page, hasMore, err := s.store.readAuditPage(r.Context(), `SELECT audit_id,agent_id,kind,created_at_ns FROM audit
-WHERE (?='' OR agent_id=?) AND (?='' OR kind=?) AND (?=0 OR created_at_ns>=?) AND (?=0 OR created_at_ns<?)
+WHERE (?='' OR site_id=?) AND (?='' OR agent_id=?) AND (?='' OR kind=?) AND (?=0 OR created_at_ns>=?) AND (?=0 OR created_at_ns<?)
 AND (?='' OR instr(lower(agent_id||' '||kind||' '||CAST(details_json AS TEXT)),lower(?))>0)
 AND (?=0 OR (created_at_ns,audit_id)<(?,?)) ORDER BY created_at_ns DESC,audit_id DESC LIMIT ?`,
-		[]any{filter.Agent, filter.Agent, filter.Type, filter.Type, from, from, until, until, filter.Search, filter.Search, cursor.At, cursor.At, cursor.Item, limit + 1}, limit, historyResponseBytes)
+		[]any{filter.SiteID, filter.SiteID, filter.Agent, filter.Agent, filter.Type, filter.Type, from, from, until, until, filter.Search, filter.Search, cursor.At, cursor.At, cursor.Item, limit + 1}, limit, historyResponseBytes)
 	if err != nil {
 		s.historyError(w, r, "audit filtered read", err)
 		return

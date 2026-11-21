@@ -70,7 +70,7 @@
       nav.append(C.button(cursor?"최신 판정 보기":"새로 조회",()=>run(()=>load(0))));
       if(page.next_before) nav.append(C.button("이전 판정 보기",()=>run(()=>load(page.next_before))));
       children.push(nav);
-      if (!cursor && ["admin","operator"].includes(C.session?.role)) children.push(editor());
+      if (!cursor && (C.session?.permissions ? C.can("findings.review") : ["admin","operator"].includes(C.session?.role))) children.push(editor());
       body.replaceChildren(...children);latest=page.latest_version;before=cursor;loaded=true;
     }
     box.addEventListener("toggle",()=>{if(box.open && !loaded)return run(()=>load(before));});

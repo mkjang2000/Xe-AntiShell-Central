@@ -41,7 +41,7 @@ func buildLegacyHistoryQuery(agent, kind string, cursor consoleHistoryCursor, li
 			{kind: "event_bundle", display: "event", payload: "r.payload", from: "records r INDEXED BY records_history_detection_bundle_idx", extra: "json_array_length(r.payload,'$.findings')>0"},
 		}
 	}
-	query, args := buildHistoryBranchesQuery(historyFilter{Agent: agent}, 0, 0, historyPageCursor{At: cursor.At, Agent: cursor.AgentID, Kind: cursor.Kind, ID: cursor.ID}, limit, branches)
+	query, args := buildHistoryBranchesQuery(historyFilter{Agent: agent, SiteID: cursor.FilterSite}, 0, 0, historyPageCursor{At: cursor.At, Agent: cursor.AgentID, Kind: cursor.Kind, ID: cursor.ID}, limit, branches)
 	return query, args
 }
 
@@ -55,7 +55,13 @@ func buildHistoryBranchesQuery(filter historyFilter, from, until int64, cursor h
 		if branch.findingItems {
 			item = "CAST(j.key AS INTEGER)"
 		}
+		fromTable := branch.from
 		conditions := []string{"1"}
+		if filter.SiteID != "" {
+			fromTable = strings.Replace(fromTable, "records_history_detection_bundle_idx", "records_site_detection_bundle_idx", 1)
+			conditions = append(conditions, "r.site_id=?")
+			args = append(args, filter.SiteID)
+		}
 		if branch.kind != "" {
 			conditions = append(conditions, "r.kind='"+branch.kind+"'")
 		}
@@ -112,7 +118,7 @@ func buildHistoryBranchesQuery(filter historyFilter, from, until int64, cursor h
 		if branch.findingItems {
 			order += "," + item + " DESC"
 		}
-		branches = append(branches, fmt.Sprintf("%s AS (SELECT r.agent_id,'%s' AS display_kind,r.record_id,r.received_at_ns,%s AS payload,r.kind AS source_kind,%s AS item FROM %s WHERE %s ORDER BY %s LIMIT ?)", name, branch.display, "NULL", item, branch.from, strings.Join(conditions, " AND "), order))
+		branches = append(branches, fmt.Sprintf("%s AS (SELECT r.agent_id,'%s' AS display_kind,r.record_id,r.received_at_ns,%s AS payload,r.kind AS source_kind,%s AS item FROM %s WHERE %s ORDER BY %s LIMIT ?)", name, branch.display, "NULL", item, fromTable, strings.Join(conditions, " AND "), order))
 		args = append(args, limit+1)
 	}
 	query := "WITH " + strings.Join(branches, ",") + " SELECT agent_id,display_kind,record_id,received_at_ns,payload,source_kind,item FROM (" + strings.Join(names, " UNION ALL ") + ") ORDER BY received_at_ns DESC,agent_id DESC,source_kind DESC,record_id DESC,item DESC LIMIT ?"

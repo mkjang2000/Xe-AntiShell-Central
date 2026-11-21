@@ -3,7 +3,7 @@ module github.com/mkjang2000/Xe-AntiShell-Central
 go 1.22
 
 require (
-	github.com/mkjang2000/Xe-AntiShell/protocol v0.7.0
+	github.com/mkjang2000/Xe-AntiShell/protocol v0.8.0
 	golang.org/x/crypto v0.23.0
 	golang.org/x/sys v0.30.0
 	modernc.org/sqlite v1.36.0

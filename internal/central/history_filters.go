@@ -14,6 +14,7 @@ import (
 
 type historyFilter struct {
 	View   string `json:"view"`
+	SiteID string `json:"site_id,omitempty"`
 	Agent  string `json:"agent"`
 	Type   string `json:"type"`
 	Search string `json:"search"`
@@ -23,7 +24,7 @@ type historyFilter struct {
 
 func readHistoryFilter(r *http.Request, view string) (historyFilter, int64, int64, error) {
 	query := r.URL.Query()
-	filter := historyFilter{View: view, Agent: query.Get("agent_id"), Type: query.Get("type"), Search: strings.TrimSpace(query.Get("q"))}
+	filter := historyFilter{View: view, SiteID: selectedSite(r.Context()), Agent: query.Get("agent_id"), Type: query.Get("type"), Search: strings.TrimSpace(query.Get("q"))}
 	if filter.Agent != "" && !identifierPattern.MatchString(filter.Agent) || len(filter.Type) > 160 || !validText(filter.Type, false) || len(filter.Search) > 200 || !validText(filter.Search, false) {
 		return filter, 0, 0, fmt.Errorf("%w: 에이전트·유형·검색어를 확인하세요", ErrInvalid)
 	}

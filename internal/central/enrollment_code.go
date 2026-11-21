@@ -3,6 +3,7 @@ package central
 import (
 	"crypto/sha256"
 	"crypto/x509"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -90,8 +91,25 @@ func (s *Server) consoleEnrollment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(r.Context(), "INSERT INTO enrollment_tokens(token_hash,agent_id,expires_at_ns) VALUES(?,?,?)", hex.EncodeToString(digest[:]), request.AgentID, expires.UnixNano()); err == nil {
-		err = appendAudit(r.Context(), tx, request.AgentID, "console.enrollment.issued", map[string]any{"expires_at": expires}, now)
+	siteID := selectedSite(r.Context())
+	var existing string
+	lookupErr := tx.QueryRowContext(r.Context(), "SELECT site_id FROM agents WHERE agent_id=?", request.AgentID).Scan(&existing)
+	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+		s.consoleError(w, "enrollment target site", lookupErr)
+		return
+	}
+	if siteID != "" && existing != "" && existing != siteID {
+		s.consoleError(w, "enrollment target site", ErrNotFound)
+		return
+	}
+	if siteID == "" {
+		siteID = existing
+	}
+	if siteID == "" {
+		siteID = defaultSiteID
+	}
+	if _, err = tx.ExecContext(r.Context(), "INSERT INTO enrollment_tokens(token_hash,agent_id,expires_at_ns,site_id) VALUES(?,?,?,?)", hex.EncodeToString(digest[:]), request.AgentID, expires.UnixNano(), siteID); err == nil {
+		err = appendSiteAudit(r.Context(), tx, siteID, request.AgentID, "console.enrollment.issued", map[string]any{"expires_at": expires}, now)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -100,6 +118,9 @@ func (s *Server) consoleEnrollment(w http.ResponseWriter, r *http.Request) {
 		_ = tx.Rollback()
 		s.consoleError(w, "enrollment issuance", err)
 		return
+	}
+	if selectedSite(r.Context()) != "" {
+		response["site_id"] = siteID
 	}
 	respond(w, http.StatusCreated, response)
 }

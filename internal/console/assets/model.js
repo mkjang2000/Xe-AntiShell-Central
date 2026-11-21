@@ -356,6 +356,8 @@
     const timeout = setTimeout(() => controller.abort(), options.timeoutMS || 20000);
     try {
       const headers = {...options.headers, Accept: "application/json"};
+      const site = options.site ?? C.activeSite;
+      if (site) headers["X-XEAS-Site"] = site;
       if (options.body !== undefined) headers["Content-Type"] = "application/json";
       if (method !== "GET") headers["X-CSRF-Token"] = C.session ? C.session.csrf_token : "";
       const response = await fetch(path, {method, headers, credentials: "same-origin", cache: "no-store", signal: controller.signal, ...(options.body !== undefined ? {body: JSON.stringify(options.body)} : options.rawBody !== undefined ? {body: options.rawBody} : {})});

@@ -2,6 +2,7 @@
 
 (function (C) {
   const roles = {admin:"관리자",operator:"운영자",viewer:"조회자"};
+  const accountRole = account => account.explicit_grants ? "사이트별 역할" : roles[account.role] || "미확인";
   const roleHelp = [
     ["관리자", "계정·권한 관리, 발행자 서명 RPM의 직접 등록·GitHub 가져오기·삭제, 모든 조회·운영 작업. 배포된 RPM 설치 스크립트는 root 권한으로 실행될 수 있습니다."],
     ["운영자", "조회 기능, 정책·서버 그룹 관리, 설치 토큰·제거 승인(OTP) 발급, 등록 해지, 관리자가 등록한 업데이트의 배포·설치 전 취소"],
@@ -128,7 +129,7 @@
     const operation=(title,id,form)=>{const section=Object.assign(el("details","account-detail-operation"),{id}),summary=el("summary","",title);section.append(summary,form);section.addEventListener("toggle",()=>{if(section.open)for(const item of operations)if(item!==section)item.open=false;});operations.push(section);return section;};
     detail.snapshot={...account};detail.username=account.username;detail.heading.textContent=`${account.username} 계정 상세`;detail.stale=false;detail.fields=[];detail.reload.hidden=true;
     const facts=Object.assign(el("dl","account-detail-facts"),{id:"accountDetailFacts"});
-    for(const [label,value] of [["사용자 이름",account.username],["권한",roles[account.role]||"미확인"],["생성 시각",C.time(account.created_at)],["변경 시각",C.time(account.updated_at)]])facts.append(el("dt","",label),el("dd","",value));
+    for(const [label,value] of [["사용자 이름",account.username],["권한",accountRole(account)],["생성 시각",C.time(account.created_at)],["변경 시각",C.time(account.updated_at)]])facts.append(el("dt","",label),el("dd","",value));
     const last=account.role==="admin"&&state.accounts.filter(item=>item.username!==account.username&&item.role==="admin").length===0;
     const note=el("p","panel-note",last?"마지막 관리자입니다. 권한 변경과 삭제는 다른 관리자를 추가한 뒤 진행하세요.":"변경하면 대상 계정의 모든 기존 세션이 종료됩니다.");
     const role=mutationForm(detail,"권한 변경",last),select=roleField("accountDetailRole",account.role),confirmRole=confirmation("권한 변경과 기존 세션 종료를 확인했습니다.","accountRoleConfirm"),saveRole=button("권한 저장","accountRoleSave","submit");
@@ -137,7 +138,13 @@
       if(!confirmRole.input.checked)throw new Error("권한 변경 확인에 체크하세요.");
       return C.request(`/api/accounts/${encodeURIComponent(account.username)}`,{method:"POST",body:{role:select.input.value,version:account.version}});
     },async result=>{populateDetail(result.account);detail.heading.focus();await saved(detail,"권한을 변경하고 기존 세션을 종료했습니다.");});});
-    const content=[facts,note,operation("권한 변경","accountRoleOperation",role.form)];
+    const content=[facts,note];
+    if(account.explicit_grants){
+      const scopeLink=el("a","text-link","사이트·권한에서 역할 관리");
+      scopeLink.href="#access-management";
+      scopeLink.addEventListener("click",()=>close(detail,false));
+      content.push(scopeLink);
+    }else content.push(operation("권한 변경","accountRoleOperation",role.form));
     if(account.username!==C.session.username){
       const reset=mutationForm(detail,"비밀번호 재설정"),next=newPasswordField("새 비밀번호","accountResetPassword"),repeat=newPasswordField("새 비밀번호 확인","accountResetPasswordConfirm"),confirmed=confirmation("비밀번호 변경과 기존 세션 종료를 확인했습니다.","accountResetConfirm");
       reset.form.id="accountResetForm";reset.fieldset.append(next.wrap,repeat.wrap,confirmed.wrap,button("비밀번호 재설정","accountResetSubmit","submit"));reset.form.prepend(el("p","panel-note",passwordHelp));content.push(operation("비밀번호 재설정","accountResetOperation",reset.form));
@@ -164,7 +171,7 @@
       const row=el("tr"),name=el("th","",account.username);name.scope="row";
       const action=button("상세");action.dataset.accountUsername=account.username;action.setAttribute("aria-label",`${account.username} 계정 상세`);
       action.addEventListener("click",()=>{populateDetail(account);open(detail,action);});
-      const cell=el("td");cell.append(action);row.append(name,el("td","",roles[account.role]||"미확인"),el("td","account-date",C.time(account.created_at)),el("td","account-date",C.time(account.updated_at)),cell);return row;
+      const cell=el("td");cell.append(action);row.append(name,el("td","",accountRole(account)),el("td","account-date",C.time(account.created_at)),el("td","account-date",C.time(account.updated_at)),cell);return row;
     }));
     if(!accounts.length){const row=el("tr"),cell=el("td","empty-cell","조건에 맞는 계정이 없습니다.");cell.colSpan=5;row.append(cell);rows.append(row);}
   };
@@ -174,7 +181,7 @@
   };
   C.loadAccounts = async () => {
     if(!C.session||!state.initialized)return false;
-    const generation=++state.generation,session=C.session,admin=session.role==="admin",caller=dialogs.find(item=>item.visible),callerGeneration=caller?.generation;adminPanel.hidden=!admin;C.text("accountSelfName",`${session.username} · ${roles[session.role]||"미확인"}`);
+    const generation=++state.generation,session=C.session,admin=session.permissions?C.can("accounts.manage"):session.role==="admin",caller=dialogs.find(item=>item.visible),callerGeneration=caller?.generation;adminPanel.hidden=!admin;C.text("accountSelfName",`${session.username} · ${roles[session.role]||"미확인"}`);
     if(!admin){state.accounts=[];rows.replaceChildren();auditRows.replaceChildren();return true;}
     try{
       const [accounts,audit]=await Promise.all([C.request("/api/accounts"),C.request("/api/account-audit")]);

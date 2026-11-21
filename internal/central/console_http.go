@@ -1,6 +1,7 @@
 package central
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mkjang2000/Xe-AntiShell-Central/internal/console"
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 )
 
@@ -19,6 +21,9 @@ import (
 func (s *Server) ConsoleHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/state", s.consoleState)
+	mux.HandleFunc("GET /api/sites", s.consoleSites)
+	mux.HandleFunc("POST /api/sites", s.consoleSites)
+	mux.HandleFunc("POST /api/sites/{id}/agents", s.consoleMoveSiteAgent)
 	for _, pattern := range []string{"GET /api/policy-trials", "POST /api/policy-trials", "GET /api/policy-trials/{id}", "POST /api/policy-trials/{id}/{operation}"} {
 		mux.HandleFunc(pattern, s.consolePolicyTrial)
 	}
@@ -37,11 +42,20 @@ func (s *Server) ConsoleHandler() http.Handler {
 	mux.HandleFunc("DELETE /api/templates/{id}", s.consoleDeleteTemplate)
 	mux.HandleFunc("POST /api/deploy/preview", s.consolePreview)
 	mux.HandleFunc("POST /api/deploy", s.consoleDeploy)
+	mux.HandleFunc("GET /api/agent-configuration/{id}", s.consoleAgentConfiguration)
+	mux.HandleFunc("POST /api/agent-configuration/preview", s.consoleAgentConfigurationPreview)
+	mux.HandleFunc("POST /api/agent-configuration/apply", s.consoleAgentConfigurationApply)
 	mux.HandleFunc("POST /api/enrollment", s.consoleEnrollment)
 	// Reuse the existing enrollment-bound, policy-deny-aware signed grant flow.
 	// Consumption and single-operation replay protection remain agent duties.
 	mux.HandleFunc("POST /api/removal", s.consoleRemoval)
 	mux.HandleFunc("POST /api/revoke", s.consoleRevoke)
+	mux.HandleFunc("GET /api/agents/{id}/remote-removal", s.consoleRemoteRemoval)
+	mux.HandleFunc("POST /api/agents/{id}/remote-removal", s.consoleRemoteRemoval)
+	mux.HandleFunc("POST /api/agents/{id}/remote-removal/cancel", s.consoleRemoteRemovalCancel)
+	mux.HandleFunc("POST /api/remote-removal/preview", s.consoleRemoteRemovalBatchPreview)
+	mux.HandleFunc("POST /api/remote-removal/batches", s.consoleRemoteRemovalBatchApply)
+	mux.HandleFunc("GET /api/remote-removal/batches/{id}", s.consoleRemoteRemovalBatchStatus)
 	mux.HandleFunc("GET "+centralUpdateBase+"status", s.consoleSelfUpdate)
 	mux.HandleFunc("GET "+centralUpdateBase+"releases", s.consoleSelfUpdate)
 	mux.HandleFunc("POST "+centralUpdateBase+"github", s.consoleSelfUpdate)
@@ -57,7 +71,7 @@ func (s *Server) ConsoleHandler() http.Handler {
 	mux.HandleFunc("POST /api/updates/rollouts/{id}/cancel", s.consoleCancelUpdate)
 	mux.HandleFunc("GET /api/updates/github/releases", s.consoleUpdateGitHubReleases)
 	mux.HandleFunc("POST /api/updates/github/import", s.consoleImportUpdateGitHub)
-	return secureHeaders(mux)
+	return secureHeaders(s.consoleSiteScope(mux))
 }
 
 func consoleDecode(w http.ResponseWriter, r *http.Request, maximum int64, value any) bool {
@@ -110,25 +124,33 @@ func (s *Server) consoleState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	agents, err := listAgents(r.Context(), tx)
-	if err != nil {
-		_ = tx.Rollback()
-		s.consoleError(w, "state agents", err)
-		return
-	}
+	siteID := selectedSite(r.Context())
+	readAgents := mayReadConsoleAgents(r)
+	agents := []Agent{}
 	var totalAgents int
-	if err = tx.QueryRowContext(r.Context(), "SELECT count(*) FROM agents").Scan(&totalAgents); err != nil {
-		_ = tx.Rollback()
-		s.consoleError(w, "state fleet count", err)
-		return
+	if readAgents {
+		agents, err = listAgents(r.Context(), tx)
+		if err != nil {
+			_ = tx.Rollback()
+			s.consoleError(w, "state agents", err)
+			return
+		}
+		if err = tx.QueryRowContext(r.Context(), "SELECT count(*) FROM agents WHERE (?='' OR site_id=?)", siteID, siteID).Scan(&totalAgents); err != nil {
+			_ = tx.Rollback()
+			s.consoleError(w, "state fleet count", err)
+			return
+		}
 	}
 	groups, templates := []ConsoleGroup{}, []ConsoleTemplate{}
-	rows, err := tx.QueryContext(r.Context(), "SELECT id,name,description,version,agent_ids_json FROM console_groups ORDER BY id LIMIT 1000")
-	if err == nil {
+	var rows *sql.Rows
+	if mayReadConsoleGroups(r) {
+		rows, err = tx.QueryContext(r.Context(), "SELECT id,name,description,version,agent_ids_json,site_id FROM console_groups WHERE (?='' OR site_id=?) ORDER BY id LIMIT 1000", siteID, siteID)
+	}
+	if rows != nil && err == nil {
 		for rows.Next() {
 			var group ConsoleGroup
 			var body []byte
-			if err = rows.Scan(&group.ID, &group.Name, &group.Description, &group.Version, &body); err != nil {
+			if err = rows.Scan(&group.ID, &group.Name, &group.Description, &group.Version, &body, &group.SiteID); err != nil {
 				break
 			}
 			if err = json.Unmarshal(body, &group.AgentIDs); err != nil {
@@ -141,7 +163,7 @@ func (s *Server) consoleState(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = rows.Close()
 	}
-	if err == nil {
+	if err == nil && mayReadConsoleTemplates(r) {
 		rows, err = tx.QueryContext(r.Context(), "SELECT id,name,description,version,settings_json FROM console_templates ORDER BY id LIMIT 1000")
 		if err == nil {
 			for rows.Next() {
@@ -168,59 +190,64 @@ func (s *Server) consoleState(w http.ResponseWriter, r *http.Request) {
 	}
 	pending := make(map[string][]string)
 	assignments := make(map[string]consoleAssignment)
-	latest := make(map[string][]byte, len(templates))
-	for _, template := range templates {
-		if latest[template.ID], err = json.Marshal(template.Settings); err != nil {
-			break
-		}
-	}
-	if err == nil {
-		rows, err = tx.QueryContext(r.Context(), `SELECT a.agent_id,s.settings_json,EXISTS(SELECT 1 FROM integrity_file_reports f WHERE (f.agent_id,f.enrollment_id,f.revision)=(s.agent_id,s.enrollment_id,s.revision)),
-COALESCE(json_extract(CAST(p.signed_json AS TEXT),'$.policy.policy_id'),'') FROM agents a JOIN console_policy_settings s
-ON a.agent_id=s.agent_id AND a.enrollment_id=s.enrollment_id AND a.desired_policy_revision=s.revision
-LEFT JOIN policies p ON (p.agent_id,p.enrollment_id,p.revision)=(s.agent_id,s.enrollment_id,s.revision) ORDER BY a.agent_id LIMIT 1000`)
-	}
-	if err == nil {
-		for rows.Next() {
-			var id, policyID string
-			var body []byte
-			var settings ConsoleSettings
-			var measured bool
-			if err = rows.Scan(&id, &body, &measured, &policyID); err != nil {
+	now := s.now().UTC()
+	var responses map[string]consoleResponse
+	var detections map[string]consoleDetection
+	window := consoleDetectionWindowInfo{Since: now.Add(-consoleDetectionWindow)}
+	if readAgents {
+		latest := make(map[string][]byte, len(templates))
+		for _, template := range templates {
+			if latest[template.ID], err = json.Marshal(template.Settings); err != nil {
 				break
 			}
-			if err = json.Unmarshal(body, &settings); err != nil {
-				break
-			}
-			pending[id] = consolePendingWithMeasurement(settings, measured)
-			var assignment consoleAssignment
-			if assignment, err = assignedTemplate(policyID, settings, latest); err != nil {
-				break
-			}
-			assignments[id] = assignment
 		}
 		if err == nil {
-			err = rows.Err()
+			rows, err = tx.QueryContext(r.Context(), `SELECT a.agent_id,s.settings_json,EXISTS(SELECT 1 FROM integrity_file_reports f WHERE (f.agent_id,f.enrollment_id,f.revision)=(s.agent_id,s.enrollment_id,s.revision)),
+COALESCE(json_extract(CAST(p.signed_json AS TEXT),'$.policy.policy_id'),'') FROM agents a JOIN console_policy_settings s
+ON a.agent_id=s.agent_id AND a.enrollment_id=s.enrollment_id AND a.desired_policy_revision=s.revision
+LEFT JOIN policies p ON (p.agent_id,p.enrollment_id,p.revision)=(s.agent_id,s.enrollment_id,s.revision) WHERE (?='' OR a.site_id=?) ORDER BY a.agent_id LIMIT 1000`, siteID, siteID)
 		}
-		_ = rows.Close()
-	}
-	if err != nil {
-		_ = tx.Rollback()
-		s.consoleError(w, "state pending features", err)
-		return
-	}
-	responses, err := consoleDesiredResponses(r.Context(), tx)
-	if err != nil {
-		_ = tx.Rollback()
-		s.consoleError(w, "state response modes", err)
-		return
-	}
-	now := s.now().UTC()
-	detections, window, err := consoleRecentDetections(r.Context(), tx, now.Add(-consoleDetectionWindow), consoleDetectionScanLimit)
-	if err != nil {
-		_ = tx.Rollback()
-		s.consoleError(w, "state detections", err)
-		return
+		if err == nil {
+			for rows.Next() {
+				var id, policyID string
+				var body []byte
+				var settings ConsoleSettings
+				var measured bool
+				if err = rows.Scan(&id, &body, &measured, &policyID); err != nil {
+					break
+				}
+				if err = json.Unmarshal(body, &settings); err != nil {
+					break
+				}
+				pending[id] = consolePendingWithMeasurement(settings, measured)
+				var assignment consoleAssignment
+				if assignment, err = assignedTemplate(policyID, settings, latest); err != nil {
+					break
+				}
+				assignments[id] = assignment
+			}
+			if err == nil {
+				err = rows.Err()
+			}
+			_ = rows.Close()
+		}
+		if err != nil {
+			_ = tx.Rollback()
+			s.consoleError(w, "state pending features", err)
+			return
+		}
+		responses, err = consoleDesiredResponses(r.Context(), tx)
+		if err != nil {
+			_ = tx.Rollback()
+			s.consoleError(w, "state response modes", err)
+			return
+		}
+		detections, window, err = consoleRecentDetections(r.Context(), tx, now.Add(-consoleDetectionWindow), consoleDetectionScanLimit)
+		if err != nil {
+			_ = tx.Rollback()
+			s.consoleError(w, "state detections", err)
+			return
+		}
 	}
 	type consoleAgent struct {
 		Agent
@@ -238,7 +265,26 @@ LEFT JOIN policies p ON (p.agent_id,p.enrollment_id,p.revision)=(s.agent_id,s.en
 		consoleAgents = append(consoleAgents, consoleAgent{Agent: agent, PendingFeatures: features, consoleAssignment: assignments[agent.ID], consoleResponse: responses[agent.ID], consoleDetection: detections[agent.ID]})
 	}
 	_ = tx.Rollback()
-	respond(w, http.StatusOK, map[string]any{"server_time": now, "rule_ids": managed.BuiltinRuleIDs(), "agents": consoleAgents, "total_agents": totalAgents, "agents_truncated": totalAgents > len(consoleAgents), "detections": window, "groups": groups, "templates": templates, "defaults": defaultConsoleSettings(now), "enrollment": map[string]any{"central_url": s.enrollmentURL, "ready": s.enrollmentURL != ""}})
+	respond(w, http.StatusOK, map[string]any{"server_time": now, "site_id": siteID, "rule_ids": managed.BuiltinRuleIDs(), "agents": consoleAgents, "total_agents": totalAgents, "agents_truncated": totalAgents > len(consoleAgents), "detections": window, "groups": groups, "templates": templates, "defaults": defaultConsoleSettings(now), "enrollment": map[string]any{"central_url": s.enrollmentURL, "ready": s.enrollmentURL != ""}})
+}
+
+func mayReadConsoleAgents(r *http.Request) bool {
+	account, ok := console.AuthenticatedAccount(r.Context())
+	return !ok || account.Can(console.PermissionAgentRead, selectedSite(r.Context()))
+}
+
+func mayReadConsoleGroups(r *http.Request) bool {
+	account, ok := console.AuthenticatedAccount(r.Context())
+	id := selectedSite(r.Context())
+	return !ok || account.Can(console.PermissionGroupsRead, id) || account.Can(console.PermissionGroupsManage, id) ||
+		account.Can(console.PermissionPoliciesDeploy, id) || account.Can(console.PermissionUpdatesDeploy, id) ||
+		account.Can(console.PermissionAgentRemove, id)
+}
+
+func mayReadConsoleTemplates(r *http.Request) bool {
+	account, ok := console.AuthenticatedAccount(r.Context())
+	id := selectedSite(r.Context())
+	return !ok || account.Can(console.PermissionPoliciesRead, id) || account.Can(console.PermissionPoliciesDeploy, id) || account.Can(console.PermissionPoliciesManage, console.GlobalScope)
 }
 
 func (s *Server) consoleSaveGroup(w http.ResponseWriter, r *http.Request) {

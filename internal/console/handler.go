@@ -41,6 +41,7 @@ type server struct {
 	passwordLimiter *loginLimiter
 	loginSlots      chan struct{}
 	origin          originPolicy
+	siteExists      func(context.Context, string) (bool, error)
 }
 
 // New wraps a central business API with browser authentication. The supplied
@@ -75,6 +76,9 @@ func NewWithOptions(credentials Credentials, apiHandler http.Handler, logger *sl
 	if err != nil {
 		return nil, err
 	}
+	if options.OnAuthorizationLoader != nil {
+		options.OnAuthorizationLoader(accounts.loadAuthorization)
+	}
 	return &server{
 		credentials:     credentials,
 		accounts:        accounts,
@@ -84,6 +88,7 @@ func NewWithOptions(credentials Credentials, apiHandler http.Handler, logger *sl
 		limiter:         newLoginLimiter(),
 		passwordLimiter: newLoginLimiter(),
 		origin:          origin,
+		siteExists:      options.SiteExists,
 		// At most one expensive password verification per console. This also
 		// bounds Argon2 memory when requests use many different source IPs.
 		loginSlots: make(chan struct{}, 1),
@@ -122,7 +127,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/assets/"):
 		name := strings.TrimPrefix(r.URL.Path, "/assets/")
 		switch name {
-		case "app.css", "app.js", "model.js", "privilege.js", "fleet.js", "fleet.css", "file-integrity.js", "host-boundary.js", "application-policies.js", "applied-policies.js", "policy-usage.js", "application-policies.css", "policy-editor.css", "policy.js", "policy-services.js", "policy-diff.js", "policy-trials.js", "service-inventory.js", "operations.js", "accounts.js", "accounts.css", "access.js", "theme.js", "theme.css", "history.js", "finding-reviews.js", "capability-editor.js", "updates.js", "updates.css", "updates-source.js", "central-update.js":
+		case "app.css", "app.js", "model.js", "privilege.js", "fleet.js", "fleet.css", "remote-removal.js", "access-management.js", "removal-batches.js", "file-integrity.js", "host-boundary.js", "application-policies.js", "applied-policies.js", "policy-usage.js", "application-policies.css", "policy-editor.css", "policy.js", "policy-services.js", "policy-diff.js", "policy-trials.js", "service-inventory.js", "operations.js", "accounts.js", "accounts.css", "access.js", "theme.js", "theme.css", "history.js", "finding-reviews.js", "capability-editor.js", "updates.js", "updates.css", "updates-source.js", "central-update.js":
 		default:
 			http.NotFound(w, r)
 			return
@@ -196,7 +201,15 @@ func (s *server) serveAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		cookie, _ := r.Cookie(sessionCookieName)
-		writeJSON(w, http.StatusOK, map[string]string{"username": account.Username, "role": string(account.Role), "csrf_token": s.csrfToken(cookie.Value)})
+		writeJSON(w, http.StatusOK, map[string]string{"username": account.Username, "role": string(accountDisplayRole(account)), "csrf_token": s.csrfToken(cookie.Value)})
+		return
+	}
+	if r.URL.Path == "/api/session/permissions" {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w, "GET")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"permissions": account.permissionScopes(), "site_ids": account.SiteIDs()})
 		return
 	}
 	switch r.Method {
@@ -209,12 +222,18 @@ func (s *server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, "GET, POST, DELETE")
 		return
 	}
+	_, accountGrants := accountGrantTarget(r.URL.Path)
+	if accountGrants || r.URL.Path == "/api/rbac" || strings.HasPrefix(r.URL.Path, "/api/rbac/") {
+		r.Body = http.MaxBytesReader(w, r.Body, maxAPIBody)
+		s.serveRBAC(w, r, account)
+		return
+	}
 	if r.URL.Path == "/api/account/password" || r.URL.Path == "/api/account-audit" || r.URL.Path == "/api/accounts" || strings.HasPrefix(r.URL.Path, "/api/accounts/") {
 		r.Body = http.MaxBytesReader(w, r.Body, maxAPIBody)
 		s.serveAccounts(w, r, account)
 		return
 	}
-	if !allowsAPI(account.Role, r.Method, r.URL.Path) {
+	if !allowsAccountAPI(account, r.Method, r.URL.Path) {
 		denyAccountAccess(w)
 		return
 	}

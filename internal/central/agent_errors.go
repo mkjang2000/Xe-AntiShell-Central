@@ -101,7 +101,7 @@ func recordHeartbeatErrors(ctx context.Context, tx *sql.Tx, agentID string, hear
 			}
 		}
 		if transition != "" {
-			if _, err = tx.ExecContext(ctx, "INSERT INTO console_agent_errors(agent_id,kind,transition,category,recorded_at_ns) VALUES(?,?,?,?,?)", agentID, state.kind, transition, state.category, now.UnixNano()); err != nil {
+			if _, err = tx.ExecContext(ctx, "INSERT INTO console_agent_errors(agent_id,kind,transition,category,recorded_at_ns,site_id) VALUES(?,?,?,?,?,COALESCE((SELECT site_id FROM agents WHERE agent_id=?),'default'))", agentID, state.kind, transition, state.category, now.UnixNano(), agentID); err != nil {
 				return err
 			}
 		}
@@ -113,9 +113,6 @@ func recordHeartbeatErrors(ctx context.Context, tx *sql.Tx, agentID string, hear
 }
 
 func initializeErrorHistory(ctx context.Context, tx *sql.Tx) error {
-	if _, err := tx.ExecContext(ctx, historySchema); err != nil {
-		return err
-	}
 	cursor := ""
 	for {
 		rows, err := tx.QueryContext(ctx, `SELECT a.agent_id,a.heartbeat_json FROM agents a WHERE a.heartbeat_json IS NOT NULL AND a.agent_id>?

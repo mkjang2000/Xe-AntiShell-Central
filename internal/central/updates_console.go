@@ -11,9 +11,10 @@ import (
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 )
 
-func updateConsoleActor(w http.ResponseWriter, r *http.Request, adminOnly bool) (string, bool) {
+func updateConsoleActor(w http.ResponseWriter, r *http.Request) (string, bool) {
 	account, ok := console.AuthenticatedAccount(r.Context())
-	allowed := ok && (account.Role == console.RoleAdmin || !adminOnly && (account.Role == console.RoleOperator || r.Method == http.MethodGet && account.Role == console.RoleViewer))
+	permission, known := console.RoutePermission(r.Method, r.URL.Path)
+	allowed := ok && known && account.Can(permission, selectedSite(r.Context()))
 	if !allowed {
 		respond(w, http.StatusForbidden, map[string]string{"error": "현재 계정에는 업데이트 작업 권한이 없습니다"})
 		return "", false
@@ -22,7 +23,7 @@ func updateConsoleActor(w http.ResponseWriter, r *http.Request, adminOnly bool) 
 }
 
 func (s *Server) consoleUpdateReleases(w http.ResponseWriter, r *http.Request) {
-	actor, ok := updateConsoleActor(w, r, r.Method == http.MethodPost)
+	actor, ok := updateConsoleActor(w, r)
 	if !ok {
 		return
 	}
@@ -91,7 +92,7 @@ func (s *Server) consoleUpdateReleases(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) consoleDeleteUpdateRelease(w http.ResponseWriter, r *http.Request) {
-	actor, ok := updateConsoleActor(w, r, true)
+	actor, ok := updateConsoleActor(w, r)
 	if !ok {
 		return
 	}
@@ -123,7 +124,7 @@ func updatePageLimit(r *http.Request, defaultValue int) (int, error) {
 	return n, nil
 }
 func (s *Server) consoleUpdateAgents(w http.ResponseWriter, r *http.Request) {
-	if _, ok := updateConsoleActor(w, r, false); !ok {
+	if _, ok := updateConsoleActor(w, r); !ok {
 		return
 	}
 	limit, err := updatePageLimit(r, 100)
@@ -139,7 +140,7 @@ func (s *Server) consoleUpdateAgents(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, map[string]any{"items": items, "next": next, "total": total})
 }
 func (s *Server) consoleUpdatePreview(w http.ResponseWriter, r *http.Request) {
-	if _, ok := updateConsoleActor(w, r, false); !ok {
+	if _, ok := updateConsoleActor(w, r); !ok {
 		return
 	}
 	var request ConsoleUpdateRequest
@@ -192,7 +193,7 @@ func (s *Server) consoleUpdatePreview(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, map[string]any{"preview_token": token, "expires_at": snapshot.ExpiresAt, "release": release, "targets": snapshot.Targets, "eligible_count": eligible, "excluded_count": len(snapshot.Targets) - eligible})
 }
 func (s *Server) consoleCreateUpdate(w http.ResponseWriter, r *http.Request) {
-	actor, ok := updateConsoleActor(w, r, false)
+	actor, ok := updateConsoleActor(w, r)
 	if !ok {
 		return
 	}
@@ -221,7 +222,7 @@ func (s *Server) consoleCreateUpdate(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, map[string]any{"rollout": rollout, "jobs": jobs})
 }
 func (s *Server) consoleUpdateRollouts(w http.ResponseWriter, r *http.Request) {
-	if _, ok := updateConsoleActor(w, r, false); !ok {
+	if _, ok := updateConsoleActor(w, r); !ok {
 		return
 	}
 	limit, err := updatePageLimit(r, 20)
@@ -237,7 +238,7 @@ func (s *Server) consoleUpdateRollouts(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, map[string]any{"items": items, "next": next})
 }
 func (s *Server) consoleUpdateRollout(w http.ResponseWriter, r *http.Request) {
-	if _, ok := updateConsoleActor(w, r, false); !ok {
+	if _, ok := updateConsoleActor(w, r); !ok {
 		return
 	}
 	limit, err := updatePageLimit(r, 100)
@@ -253,7 +254,7 @@ func (s *Server) consoleUpdateRollout(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, map[string]any{"rollout": rollout, "jobs": jobs, "next": next})
 }
 func (s *Server) consoleCancelUpdate(w http.ResponseWriter, r *http.Request) {
-	actor, ok := updateConsoleActor(w, r, false)
+	actor, ok := updateConsoleActor(w, r)
 	if !ok {
 		return
 	}

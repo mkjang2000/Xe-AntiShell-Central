@@ -9,7 +9,7 @@
   };
   const familyLabels = {ipv4: "IPv4", ipv6: "IPv6"};
   const bindingLabels = {wildcard: "모든 주소", interface: "특정 주소", loopback: "루프백"};
-  const isOperator = () => ["admin", "operator"].includes(C.session?.role);
+  const isOperator = () => C.session?.permissions ? C.can("policies.manage") : ["admin", "operator"].includes(C.session?.role);
   const canPick = () => isOperator() && id("policyServiceScope").value !== "all_listening";
   const fresh = time => {
     const age = C.now() - Date.parse(time);

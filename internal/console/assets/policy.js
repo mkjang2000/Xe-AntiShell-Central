@@ -25,7 +25,7 @@
   const selectedCapabilityKeys = () => C.lines(C.id("requiredCapabilities").value);
   const capabilitySummary = keys => C.array(keys).map(key => capabilityLabels.get(key) || `${unavailableCapabilities.get(key) || "사용자 정의 조건"} (${key})`).join(" · ") || "명시 조건 없음";
   const savedTemplate = () => C.state.templates.find(t => t.id === P.saved?.id) || P.saved;
-  const writable = () => ["admin", "operator"].includes(C.session?.role);
+  const writable = () => C.session?.permissions ? C.can("policies.manage") : ["admin", "operator"].includes(C.session?.role);
 
   // Section tabs. Every section stays in the form so hidden values are saved.
   const showSection = name => {

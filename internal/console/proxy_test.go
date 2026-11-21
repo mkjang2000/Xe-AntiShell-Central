@@ -59,14 +59,14 @@ func TestProxyLoginSessionCSRFAndLogout(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &session); err != nil || w.Code != http.StatusOK || session["username"] != "admin" || len(session["csrf_token"]) != 43 {
 		t.Fatalf("proxy session status=%d, decode error=%v", w.Code, err)
 	}
-	for _, method := range []string{http.MethodPost, http.MethodDelete} {
-		r = proxyRequest(method, "/api/groups", "{}")
+	for _, route := range []struct{ method, path string }{{http.MethodPost, "/api/groups"}, {http.MethodDelete, "/api/groups/example"}} {
+		r = proxyRequest(route.method, route.path, "{}")
 		r.AddCookie(cookie)
 		r.Header.Set("X-CSRF-Token", session["csrf_token"])
 		w = httptest.NewRecorder()
 		s.ServeHTTP(w, r)
 		if w.Code != http.StatusOK {
-			t.Fatalf("proxy %s mutation status=%d", method, w.Code)
+			t.Fatalf("proxy %s mutation status=%d", route.method, w.Code)
 		}
 	}
 	if *calls != 2 {

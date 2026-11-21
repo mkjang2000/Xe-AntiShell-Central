@@ -36,64 +36,20 @@ func sessionUsername(token string) string {
 }
 
 func allowsAPI(role Role, method, endpoint string) bool {
-	if role == RoleAdmin {
-		return true
+	return allowsAccountAPI(Account{Role: role}, method, endpoint)
+}
+
+func allowsAccountAPI(account Account, method, endpoint string) bool {
+	if endpoint == "/api/sites" && method == http.MethodGet {
+		// The site endpoint filters its list to effective grants. An authenticated
+		// account without grants still receives an empty catalog.
+		return account.Role.valid() || account.ExplicitGrants
 	}
-	if role != RoleOperator && role != RoleViewer {
-		return false
+	if endpoint == "/api/state" && method == http.MethodGet {
+		return len(account.StateScopes()) != 0
 	}
-	partsTrial := strings.Split(endpoint, "/")
-	if len(partsTrial) >= 3 && partsTrial[1] == "api" && partsTrial[2] == "policy-trials" {
-		if method == http.MethodGet {
-			return len(partsTrial) == 3 || len(partsTrial) == 4 && partsTrial[3] != ""
-		}
-		if role != RoleOperator || method != http.MethodPost {
-			return false
-		}
-		return len(partsTrial) == 3 || len(partsTrial) == 5 && partsTrial[3] != "" && (partsTrial[4] == "report" || partsTrial[4] == "preview" || partsTrial[4] == "apply")
-	}
-	if method == http.MethodGet {
-		if endpoint == "/api/updates/releases" || endpoint == "/api/updates/agents" || endpoint == "/api/updates/rollouts" || endpoint == "/api/updates/github/releases" {
-			return true
-		}
-		parts := strings.Split(endpoint, "/")
-		if len(parts) == 5 && parts[1] == "api" && parts[2] == "templates" && parts[3] != "" && parts[4] == "usage" {
-			return true
-		}
-		if len(parts) == 5 && parts[1] == "api" && parts[2] == "updates" && parts[3] == "rollouts" && parts[4] != "" {
-			return true
-		}
-		switch endpoint {
-		case "/api/state", "/api/history", "/api/finding-reviews", "/api/audit", "/api/errors":
-			return true
-		}
-		parts = strings.Split(endpoint, "/")
-		return len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[3] != "" && (parts[4] == "policy" || parts[4] == "integrity" || parts[4] == "service-inventory")
-	}
-	if role != RoleOperator {
-		return false
-	}
-	if method == http.MethodPost {
-		if endpoint == "/api/finding-reviews" {
-			return true
-		}
-		if endpoint == "/api/updates/preview" || endpoint == "/api/updates/rollouts" {
-			return true
-		}
-		parts := strings.Split(endpoint, "/")
-		if len(parts) == 6 && parts[1] == "api" && parts[2] == "updates" && parts[3] == "rollouts" && parts[4] != "" && parts[5] == "cancel" {
-			return true
-		}
-		switch endpoint {
-		case "/api/groups", "/api/templates", "/api/deploy/preview", "/api/deploy", "/api/enrollment", "/api/removal", "/api/revoke":
-			return true
-		}
-	}
-	if method == http.MethodDelete {
-		parts := strings.Split(endpoint, "/")
-		return len(parts) == 4 && parts[1] == "api" && (parts[2] == "groups" || parts[2] == "templates") && parts[3] != ""
-	}
-	return false
+	permission, known := RoutePermission(method, endpoint)
+	return known && account.Has(permission)
 }
 
 func denyAccountAccess(w http.ResponseWriter) {

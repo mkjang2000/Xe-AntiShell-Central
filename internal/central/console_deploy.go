@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mkjang2000/Xe-AntiShell-Central/internal/console"
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 	"github.com/mkjang2000/Xe-AntiShell/protocol/model"
 )
@@ -51,6 +52,8 @@ type consolePreviewGroup struct {
 
 type consolePreviewToken struct {
 	Nonce              string                `json:"nonce"`
+	SiteID             string                `json:"site_id,omitempty"`
+	Actor              string                `json:"actor,omitempty"`
 	IssuedAt           time.Time             `json:"issued_at"`
 	ExpiresAt          time.Time             `json:"expires_at"`
 	Request            consolePreviewRequest `json:"request"`
@@ -92,6 +95,12 @@ func consoleSnapshot(ctx context.Context, tx *sql.Tx, request consolePreviewRequ
 		return snapshot, template, err
 	}
 	snapshot.Request = request
+	snapshot.SiteID = selectedSite(ctx)
+	if snapshot.SiteID != "" {
+		if account, ok := console.AuthenticatedAccount(ctx); ok {
+			snapshot.Actor = account.Username
+		}
+	}
 	snapshot.TemplateVersion, snapshot.TemplateGeneration = template.Version, template.generation
 	if snapshot.TemplateHash, err = consoleHash(template.Settings); err != nil {
 		return snapshot, template, err
@@ -131,7 +140,7 @@ func consoleSnapshot(ctx context.Context, tx *sql.Tx, request consolePreviewRequ
 		var heartbeat []byte
 		var seenNS int64
 		target.AgentID = id
-		err = tx.QueryRowContext(ctx, "SELECT enrollment_id,desired_policy_revision,heartbeat_json,last_seen_at_ns FROM agents WHERE agent_id=? AND revoked=0", id).Scan(&target.EnrollmentID, &target.CurrentRevision, &heartbeat, &seenNS)
+		err = tx.QueryRowContext(ctx, "SELECT enrollment_id,desired_policy_revision,heartbeat_json,last_seen_at_ns FROM agents WHERE agent_id=? AND revoked=0 AND (?='' OR site_id=?)", id, snapshot.SiteID, snapshot.SiteID).Scan(&target.EnrollmentID, &target.CurrentRevision, &heartbeat, &seenNS)
 		if errors.Is(err, sql.ErrNoRows) {
 			return snapshot, template, ErrNotFound
 		}
@@ -405,7 +414,7 @@ func (s *Server) consolePreview(w http.ResponseWriter, r *http.Request) {
 }
 
 func sameConsoleSnapshot(before, after consolePreviewToken) bool {
-	if before.TemplateVersion != after.TemplateVersion || before.TemplateGeneration != after.TemplateGeneration || before.TemplateHash != after.TemplateHash || len(before.Groups) != len(after.Groups) || len(before.Targets) != len(after.Targets) {
+	if before.SiteID != after.SiteID || before.Actor != after.Actor || before.TemplateVersion != after.TemplateVersion || before.TemplateGeneration != after.TemplateGeneration || before.TemplateHash != after.TemplateHash || len(before.Groups) != len(after.Groups) || len(before.Targets) != len(after.Targets) {
 		return false
 	}
 	for index, group := range before.Groups {
@@ -447,6 +456,10 @@ func (s *Server) consoleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	if before.SiteID != selectedSite(r.Context()) {
+		s.consoleError(w, "deployment site verification", ErrConflict)
+		return
+	}
 	after, template, err := consoleSnapshot(r.Context(), tx, before.Request, now)
 	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalid) || err == nil && !sameConsoleSnapshot(before, after) {
 		err = ErrConflict

@@ -13,7 +13,7 @@ import (
 func loadUpdateRollout(ctx context.Context, q updateReader, id string) (ConsoleUpdateRollout, error) {
 	var item ConsoleUpdateRollout
 	var created, expires int64
-	err := q.QueryRowContext(ctx, "SELECT id,release_id,created_by,created_at_ns,expires_at_ns,concurrency,cancelled,paused,stop_reason FROM update_rollouts WHERE id=?", id).Scan(&item.ID, &item.ReleaseID, &item.CreatedBy, &created, &expires, &item.Concurrency, &item.Cancelled, &item.Paused, &item.StopReason)
+	err := q.QueryRowContext(ctx, "SELECT id,release_id,created_by,created_at_ns,expires_at_ns,concurrency,cancelled,paused,stop_reason,site_id FROM update_rollouts WHERE id=? AND (?='' OR site_id=?)", id, selectedSite(ctx), selectedSite(ctx)).Scan(&item.ID, &item.ReleaseID, &item.CreatedBy, &created, &expires, &item.Concurrency, &item.Cancelled, &item.Paused, &item.StopReason, &item.SiteID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return item, ErrNotFound
 	}
@@ -120,12 +120,13 @@ func (s *Server) listUpdateRollouts(ctx context.Context, after string, limit int
 		return nil, "", err
 	}
 	var before int64
+	siteID := selectedSite(ctx)
 	if after != "" {
-		if err = tx.QueryRowContext(ctx, "SELECT created_at_ns FROM update_rollouts WHERE id=?", after).Scan(&before); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT created_at_ns FROM update_rollouts WHERE id=? AND (?='' OR site_id=?)", after, siteID, siteID).Scan(&before); err != nil {
 			return nil, "", ErrInvalid
 		}
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT id FROM update_rollouts WHERE ?='' OR created_at_ns<? OR (created_at_ns=? AND id<?) ORDER BY created_at_ns DESC,id DESC LIMIT ?", after, before, before, after, limit+1)
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM update_rollouts WHERE (?='' OR site_id=?) AND (?='' OR created_at_ns<? OR (created_at_ns=? AND id<?)) ORDER BY created_at_ns DESC,id DESC LIMIT ?", siteID, siteID, after, before, before, after, limit+1)
 	if err != nil {
 		return nil, "", err
 	}

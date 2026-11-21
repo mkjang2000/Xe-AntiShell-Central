@@ -332,6 +332,8 @@
       ["등록 ID", agent.enrollment_id], ["등록 시각", C.time(agent.enrolled_at)], ["마지막 인증 수신", C.time(agent.last_seen_at)]
     ]));
     container.append(heading("서버 정보"), facts);
+    const remoteRemoval = C.remoteRemovalPanel?.(agent);
+    if (remoteRemoval) container.append(remoteRemoval);
   };
 
   // A directly issued policy has no console template; once the detail has
@@ -463,7 +465,7 @@
   };
   const renderHead = agent => {
     const connection = C.connection(agent), health = C.health(agent), policy = C.policyState(agent), live = status(agent);
-    C.text("agentDetailSubtitle", [agent.hostname || "호스트명 보고 없음", C.osLabel(agent), live.version].filter(Boolean).join(" · "));
+    C.text("agentDetailSubtitle", [agent.hostname || "호스트명 보고 없음", C.siteName?.(agent.site_id), C.osLabel(agent), live.version].filter(Boolean).join(" · "));
     const badge = (label, ...nodes) => { const span = C.el("span", "agent-badge"); span.append(C.el("span", "", label), ...nodes); return span; };
     const sent = heartbeat(agent).sent_at;
     C.id("agentDetailBadges").replaceChildren(

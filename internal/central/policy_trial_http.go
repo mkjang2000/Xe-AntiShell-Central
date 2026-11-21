@@ -16,7 +16,11 @@ import (
 func (s *Server) consolePolicyTrial(w http.ResponseWriter, r *http.Request) {
 	account, ok := console.AuthenticatedAccount(r.Context())
 	write := r.Method == http.MethodPost
-	if !ok || !(account.Role == console.RoleAdmin || account.Role == console.RoleOperator || !write && account.Role == console.RoleViewer) {
+	permission := console.PermissionPoliciesRead
+	if write {
+		permission = console.PermissionPoliciesTrial
+	}
+	if !ok || !account.Can(permission, console.GlobalScope) {
 		s.consoleError(w, "policy trial authorization", ErrUnauthorized)
 		return
 	}

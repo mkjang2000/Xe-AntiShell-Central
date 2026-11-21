@@ -113,8 +113,8 @@ func persistHistoryRecord(ctx context.Context, tx *sql.Tx, agentID string, recor
 		return err
 	}
 	result, err := tx.ExecContext(ctx, `INSERT INTO records
-(agent_id,kind,record_id,payload,received_at_ns,original_hash) VALUES(?,?,?,?,?,?)
-ON CONFLICT DO NOTHING`, agentID, record.Kind, record.ID, stored, now.UnixNano(), digest[:])
+(agent_id,kind,record_id,payload,received_at_ns,original_hash,site_id) VALUES(?,?,?,?,?,?,COALESCE((SELECT site_id FROM agents WHERE agent_id=?),'default'))
+ON CONFLICT DO NOTHING`, agentID, record.Kind, record.ID, stored, now.UnixNano(), digest[:], agentID)
 	if err != nil {
 		return err
 	}

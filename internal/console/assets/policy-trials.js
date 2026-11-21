@@ -3,7 +3,7 @@
   const base="/api/policy-trials";
   const states={applied:"적용 확인",pending:"보고 대기",stale:"기한 경과",rejected:"거절",superseded:"등록·정책 변경",unhealthy:"상태 이상"};
   const phases={prepared:"비교 준비",canary:"한 대 선행 배포",expanded:"그룹 확대",restoring_canary:"선행 호스트 복구",restoring_all:"그룹 복구"};
-  const write=()=>["admin","operator"].includes(C.session?.role);
+  const write=()=>C.session?.permissions?C.can("policies.trial"):["admin","operator"].includes(C.session?.role);
   const post=(path,body)=>C.request(path,{method:"POST",body});
   const button=(text,act)=>{const b=C.button(text,()=>C.run(b,act));return b;};
   const label=(text,node)=>{const l=C.el("label","",text);l.append(node);return l;};

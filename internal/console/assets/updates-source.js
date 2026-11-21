@@ -7,7 +7,7 @@
   const failure=()=>new Error(invalid);
   const exact=(value,keys)=>value&&typeof value==="object"&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
   const component=value=>typeof value==="string"&&/^[A-Za-z0-9][A-Za-z0-9._+~^]{0,127}$/.test(value);
-  const admin=()=>{if(C.session?.role!=="admin")throw new Error("릴리즈 등록·가져오기·삭제는 관리자만 할 수 있습니다.");};
+  const admin=()=>{if((C.session?.permissions?!C.can("updates.releases"):C.session?.role!=="admin"))throw new Error(C.session?.permissions ? "릴리즈 등록·가져오기·삭제 권한이 필요합니다." : "릴리즈 등록·가져오기·삭제는 관리자만 할 수 있습니다.");};
   const rejectDuplicateKeys=text=>{
     const objects=[];
     for(let index=0;index<text.length;index++){

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mkjang2000/Xe-AntiShell-Central/internal/console"
 	"github.com/mkjang2000/Xe-AntiShell/protocol/managed"
 )
 
@@ -19,6 +20,8 @@ const updatePreviewDomain = "xe-antishell-central/update-preview/v1\x00"
 
 type updatePreview struct {
 	Nonce       string                `json:"nonce"`
+	SiteID      string                `json:"site_id,omitempty"`
+	Actor       string                `json:"actor,omitempty"`
 	IssuedAt    time.Time             `json:"issued_at"`
 	ExpiresAt   time.Time             `json:"expires_at"`
 	Request     ConsoleUpdateRequest  `json:"request"`
@@ -28,7 +31,12 @@ type updatePreview struct {
 }
 
 func updateSnapshot(ctx context.Context, tx *sql.Tx, request ConsoleUpdateRequest, now time.Time) (updatePreview, ConsoleUpdateRelease, error) {
-	snapshot := updatePreview{}
+	snapshot := updatePreview{SiteID: selectedSite(ctx)}
+	if snapshot.SiteID != "" {
+		if account, ok := console.AuthenticatedAccount(ctx); ok {
+			snapshot.Actor = account.Username
+		}
+	}
 	if !updateDigestPattern.MatchString(request.ReleaseID) {
 		return snapshot, ConsoleUpdateRelease{}, ErrInvalid
 	}
@@ -100,8 +108,19 @@ func updateTarget(ctx context.Context, tx *sql.Tx, id string, release ConsoleUpd
 	var body []byte
 	var received int64
 	var active string
-	err := tx.QueryRowContext(ctx, `SELECT a.enrollment_id,a.revoked,i.inventory_json,coalesce(i.received_at_ns,0),coalesce(h.revision,0),coalesce(h.active_job_id,'') FROM agents a LEFT JOIN update_inventory i ON i.agent_id=a.agent_id AND i.enrollment_id=a.enrollment_id LEFT JOIN update_heads h ON h.agent_id=a.agent_id AND h.enrollment_id=a.enrollment_id WHERE a.agent_id=?`, id).Scan(&target.EnrollmentID, &revoked, &body, &received, &target.CurrentRevision, &active)
+	var pendingRemoval bool
+	err := tx.QueryRowContext(ctx, `SELECT a.enrollment_id,a.revoked,i.inventory_json,coalesce(i.received_at_ns,0),
+ coalesce(h.revision,0),coalesce(h.active_job_id,''),r.id IS NOT NULL FROM agents a
+ LEFT JOIN update_inventory i ON i.agent_id=a.agent_id AND i.enrollment_id=a.enrollment_id
+ LEFT JOIN update_heads h ON h.agent_id=a.agent_id AND h.enrollment_id=a.enrollment_id
+ LEFT JOIN remote_removal_orders r ON r.agent_id=a.agent_id AND r.enrollment_id=a.enrollment_id
+ AND `+activeRemoteRemovalCondition+`
+ WHERE a.agent_id=? AND (?='' OR a.site_id=?)`, now.UnixNano(), id, selectedSite(ctx), selectedSite(ctx)).
+		Scan(&target.EnrollmentID, &revoked, &body, &received, &target.CurrentRevision, &active, &pendingRemoval)
 	if errors.Is(err, sql.ErrNoRows) {
+		if selectedSite(ctx) != "" {
+			return target, ErrNotFound
+		}
 		target.ExcludeReason = "not_found"
 		return target, nil
 	}
@@ -110,6 +129,10 @@ func updateTarget(ctx context.Context, tx *sql.Tx, id string, release ConsoleUpd
 	}
 	if revoked != 0 {
 		target.ExcludeReason = "revoked"
+		return target, nil
+	}
+	if pendingRemoval {
+		target.ExcludeReason = "busy"
 		return target, nil
 	}
 	if len(body) == 0 {
@@ -185,6 +208,9 @@ func (s *Server) decodeUpdatePreview(token string, now time.Time) (updatePreview
 }
 
 func sameUpdateSnapshot(a, b updatePreview) bool {
+	if a.SiteID != b.SiteID || a.Actor != b.Actor {
+		return false
+	}
 	x, _ := consoleHash(struct {
 		Request ConsoleUpdateRequest
 		Release string

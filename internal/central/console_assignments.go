@@ -53,7 +53,7 @@ func consoleDesiredResponses(ctx context.Context, tx *sql.Tx) (map[string]consol
 	rows, err := tx.QueryContext(ctx, `SELECT a.agent_id,COALESCE(json_extract(CAST(p.signed_json AS TEXT),'$.policy.response.mode'),''),
 (SELECT json_group_array(json_extract(value,'$.response.mode')) FROM json_each(CAST(p.signed_json AS TEXT),'$.policy.applications'))
 FROM agents a JOIN policies p ON (p.agent_id,p.enrollment_id,p.revision)=(a.agent_id,a.enrollment_id,a.desired_policy_revision)
-WHERE a.desired_policy_revision>0 ORDER BY a.agent_id LIMIT 1000`)
+WHERE a.desired_policy_revision>0 AND (?='' OR a.site_id=?) ORDER BY a.agent_id LIMIT 1000`, selectedSite(ctx), selectedSite(ctx))
 	if err != nil {
 		return nil, err
 	}

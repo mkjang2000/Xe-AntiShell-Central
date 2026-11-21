@@ -31,7 +31,7 @@ func (s *server) serveAccounts(w http.ResponseWriter, r *http.Request, actor Acc
 		s.changeAccountPassword(w, r, actor, actor.Username, true)
 		return
 	}
-	if actor.Role != RoleAdmin {
+	if !actor.Can(PermissionAccountsManage, GlobalScope) {
 		denyAccountAccess(w)
 		return
 	}
@@ -46,14 +46,26 @@ func (s *server) serveAccounts(w http.ResponseWriter, r *http.Request, actor Acc
 			writeJSON(w, http.StatusOK, accounts)
 		case http.MethodPost:
 			var request struct {
-				Username string `json:"username"`
-				Password string `json:"password"`
-				Role     Role   `json:"role"`
+				Username string      `json:"username"`
+				Password string      `json:"password"`
+				Role     Role        `json:"role"`
+				Grants   []RoleGrant `json:"grants,omitempty"`
 			}
 			if !decodeAccountRequest(w, r, &request) {
 				return
 			}
-			if !request.Role.valid() {
+			next := Account{Username: request.Username, Role: request.Role}
+			if request.Grants != nil {
+				if request.Role != "" || !actor.Can(PermissionRolesManage, GlobalScope) {
+					denyAccountAccess(w)
+					return
+				}
+				if err := s.validateRequestedSites(r, request.Grants); err != nil {
+					s.accountError(w, err)
+					return
+				}
+				next.Role, next.Grants, next.ExplicitGrants = RoleViewer, request.Grants, true
+			} else if !request.Role.valid() {
 				s.accountError(w, errAccountInvalid)
 				return
 			}
@@ -66,7 +78,7 @@ func (s *server) serveAccounts(w http.ResponseWriter, r *http.Request, actor Acc
 				}
 				return
 			}
-			account, err := s.accounts.mutate(r.Context(), actor.Username, "created", accountRecord{Account: Account{Username: request.Username, Role: request.Role}, credentials: credentials}, 0, s.now())
+			account, err := s.accounts.mutateAuthorized(r.Context(), actor, "created", accountRecord{Account: next, credentials: credentials}, 0, s.now())
 			if err != nil {
 				s.accountError(w, err)
 				return
@@ -146,7 +158,7 @@ func (s *server) serveAccounts(w http.ResponseWriter, r *http.Request, actor Acc
 			s.accountError(w, err)
 			return
 		}
-		account, err := s.accounts.mutate(r.Context(), actor.Username, "role_changed", record, request.Version, s.now())
+		account, err := s.accounts.mutateAuthorized(r.Context(), actor, "role_changed", record, request.Version, s.now())
 		if err != nil {
 			s.accountError(w, err)
 			return
@@ -158,7 +170,7 @@ func (s *server) serveAccounts(w http.ResponseWriter, r *http.Request, actor Acc
 			s.accountError(w, errAccountInvalid)
 			return
 		}
-		if _, err = s.accounts.mutate(r.Context(), actor.Username, "deleted", record, version, s.now()); err != nil {
+		if _, err = s.accounts.mutateAuthorized(r.Context(), actor, "deleted", record, version, s.now()); err != nil {
 			s.accountError(w, err)
 			return
 		}
@@ -204,7 +216,7 @@ func (s *server) changeAccountPassword(w http.ResponseWriter, r *http.Request, a
 		return
 	}
 	record.credentials = credentials
-	account, err := s.accounts.mutate(r.Context(), actor.Username, "password_changed", record, request.Version, s.now())
+	account, err := s.accounts.mutateAuthorized(r.Context(), actor, "password_changed", record, request.Version, s.now())
 	if err != nil {
 		s.accountError(w, err)
 		return
@@ -247,6 +259,10 @@ func (s *server) accountError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errAccountMissing):
 		status, message = http.StatusNotFound, "계정을 찾을 수 없습니다."
+	case errors.Is(err, errRBACForbidden):
+		status, message = http.StatusForbidden, "현재 계정의 권한 범위에서 역할이나 계정을 변경할 수 없습니다."
+	case errors.Is(err, errRBACRoleAssigned):
+		status, message = http.StatusConflict, "계정에 할당된 역할은 먼저 할당을 해제해 주세요."
 	case errors.Is(err, errAccountConflict):
 		status, message = http.StatusConflict, "계정이 이미 있거나 변경되었습니다. 목록을 다시 조회하세요."
 	case errors.Is(err, errLastAdmin):

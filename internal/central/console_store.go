@@ -36,6 +36,7 @@ type ConsoleGroup struct {
 	Description string   `json:"description"`
 	Version     int64    `json:"version"`
 	AgentIDs    []string `json:"agent_ids"`
+	SiteID      string   `json:"site_id,omitempty"`
 	generation  string
 }
 
@@ -154,7 +155,7 @@ func normalizedIDs(ids []string, maximum int) ([]string, error) {
 func loadConsoleGroup(ctx context.Context, tx *sql.Tx, id string) (ConsoleGroup, error) {
 	var group ConsoleGroup
 	var body []byte
-	err := tx.QueryRowContext(ctx, "SELECT id,name,description,version,generation,agent_ids_json FROM console_groups WHERE id=?", id).Scan(&group.ID, &group.Name, &group.Description, &group.Version, &group.generation, &body)
+	err := tx.QueryRowContext(ctx, "SELECT id,name,description,version,generation,agent_ids_json,site_id FROM console_groups WHERE id=? AND (?='' OR site_id=?)", id, selectedSite(ctx), selectedSite(ctx)).Scan(&group.ID, &group.Name, &group.Description, &group.Version, &group.generation, &body, &group.SiteID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return group, ErrNotFound
 	}
@@ -191,13 +192,50 @@ func (s *Store) saveConsoleGroup(ctx context.Context, group ConsoleGroup, now ti
 		return group, err
 	}
 	defer tx.Rollback()
+	current, lookupErr := loadConsoleGroup(ctx, tx, group.ID)
+	if lookupErr != nil && !errors.Is(lookupErr, ErrNotFound) {
+		return group, lookupErr
+	}
+	if current.ID != "" {
+		if group.SiteID != "" && group.SiteID != current.SiteID {
+			return group, ErrNotFound
+		}
+		group.SiteID = current.SiteID
+	}
+	if group.SiteID == "" {
+		group.SiteID = selectedSite(ctx)
+	}
+	if group.SiteID == "" {
+		group.SiteID = defaultSiteID
+	}
+	if selected := selectedSite(ctx); selected != "" && selected != group.SiteID {
+		return group, ErrNotFound
+	}
+	// A group ID in a different site must not be updated via the global ID
+	// namespace even if its optimistic version is known to the caller.
+	if errors.Is(lookupErr, ErrNotFound) {
+		var existing bool
+		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM console_groups WHERE id=?)", group.ID).Scan(&existing); err != nil {
+			return group, err
+		}
+		if existing {
+			return group, ErrNotFound
+		}
+	}
+	var exists bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sites WHERE site_id=?)", group.SiteID).Scan(&exists); err != nil {
+		return group, err
+	}
+	if !exists {
+		return group, ErrNotFound
+	}
 	for _, id := range ids {
 		var active int
-		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM agents WHERE agent_id=? AND revoked=0", id).Scan(&active); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM agents WHERE agent_id=? AND revoked=0 AND site_id=?", id, group.SiteID).Scan(&active); err != nil {
 			return group, err
 		}
 		if active != 1 {
-			return group, fmt.Errorf("%w: 등록된 활성 에이전트만 그룹에 추가할 수 있습니다", ErrInvalid)
+			return group, fmt.Errorf("%w: 같은 사이트에 등록된 활성 에이전트만 그룹에 추가할 수 있습니다", ErrInvalid)
 		}
 	}
 	body, err := json.Marshal(ids)
@@ -207,7 +245,10 @@ func (s *Store) saveConsoleGroup(ctx context.Context, group ConsoleGroup, now ti
 	if group.Version, err = saveConsoleRecord(ctx, tx, "console_groups", group.ID, group.Name, group.Description, group.Version, "agent_ids_json", body); err != nil {
 		return group, err
 	}
-	if err = appendAudit(ctx, tx, "", "console.group.saved", map[string]any{"group_id": group.ID, "version": group.Version, "agent_count": len(ids)}, now); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE console_groups SET site_id=? WHERE id=?", group.SiteID, group.ID); err != nil {
+		return group, err
+	}
+	if err = appendSiteAudit(ctx, tx, group.SiteID, "", "console.group.saved", map[string]any{"group_id": group.ID, "version": group.Version, "agent_count": len(ids)}, now); err != nil {
 		return group, err
 	}
 	return group, tx.Commit()
@@ -306,7 +347,12 @@ func (s *Store) deleteConsoleRecord(ctx context.Context, group bool, id string, 
 	}
 	defer tx.Rollback()
 	var current int64
-	err = tx.QueryRowContext(ctx, "SELECT version FROM "+table+" WHERE id=?", id).Scan(&current)
+	var siteID string
+	if group {
+		err = tx.QueryRowContext(ctx, "SELECT version,site_id FROM console_groups WHERE id=? AND (?='' OR site_id=?)", id, selectedSite(ctx), selectedSite(ctx)).Scan(&current, &siteID)
+	} else {
+		err = tx.QueryRowContext(ctx, "SELECT version FROM "+table+" WHERE id=?", id).Scan(&current)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -319,7 +365,7 @@ func (s *Store) deleteConsoleRecord(ctx context.Context, group bool, id string, 
 	if _, err = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE id=? AND version=?", id, version); err != nil {
 		return err
 	}
-	if err = appendAudit(ctx, tx, "", kind, map[string]any{"id": id, "version": version}, now); err != nil {
+	if err = appendSiteAudit(ctx, tx, siteID, "", kind, map[string]any{"id": id, "version": version}, now); err != nil {
 		return err
 	}
 	return tx.Commit()

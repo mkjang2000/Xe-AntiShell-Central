@@ -149,7 +149,7 @@ func (s *Server) adminRemoval(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var enrollment string
-	err = tx.QueryRowContext(r.Context(), "SELECT enrollment_id FROM agents WHERE agent_id=? AND revoked=0", request.AgentID).Scan(&enrollment)
+	err = tx.QueryRowContext(r.Context(), "SELECT enrollment_id FROM agents WHERE agent_id=? AND revoked=0 AND (?='' OR site_id=?)", request.AgentID, selectedSite(r.Context()), selectedSite(r.Context())).Scan(&enrollment)
 	if errors.Is(err, sql.ErrNoRows) {
 		s.apiError(w, "removal target", ErrNotFound)
 		return

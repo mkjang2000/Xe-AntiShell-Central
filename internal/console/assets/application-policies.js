@@ -4,7 +4,7 @@
   const id = name => C.id(name);
   const key = ref => JSON.stringify([ref.policy_id, ref.policy_version]);
   const same = (a, b) => a.service === b.service && a.policy_id === b.policy_id && a.policy_version === b.policy_version;
-  const writable = () => ["admin", "operator"].includes(C.session?.role);
+  const writable = () => C.session?.permissions ? C.can("policies.manage") : ["admin", "operator"].includes(C.session?.role);
   const modes = {observe: ["탐지 전용", "blue"], would_block: ["모의 대응", "warning"], enforce: ["자동 종료", "danger"]};
   const profile = policy => {
     const response = C.object(policy.response), detection = C.object(policy.detection);

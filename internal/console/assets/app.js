@@ -16,6 +16,8 @@
     history:["탐지·실행 이력","DETECTION & HISTORY","중앙에 전달된 탐지 근거와 실행 기록을 검토합니다."],
     approvals:["등록·제거 승인","ENROLLMENT & APPROVALS","단일 서버 설치 토큰과 일회용 제거 승인을 발급합니다."],
     updates:["업데이트","UPDATES","센트럴과 에이전트의 설치 상태를 확인하고 업데이트를 진행합니다."],
+    decommission:["에이전트 일괄 제거","REMOTE REMOVAL","대상과 제외 사유를 확인하고 일괄 제거 결과를 조회합니다."],
+    "access-management":["사이트·권한","SITE ACCESS","역할에 권한을 부여하고 계정별 사이트 적용 범위를 지정합니다."],
     audit:["감사 기록","OPERATOR AUDIT","기간별 중앙 관리 작업과 에이전트 감사 기록을 확인합니다."],
     accounts:["계정 관리","ACCOUNT MANAGEMENT","콘솔 계정과 권한을 관리하고 본인 비밀번호를 변경합니다."]
   };
@@ -56,7 +58,9 @@
     const link=document.createElement("a");link.href=url;link.download=secret.filename;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);C.text("secretStatus","발급 파일 다운로드를 요청했습니다. 저장한 파일을 안전하게 보관하세요.");
   });
   const navigate = () => {
-    const [selected,detail=""]=location.hash.slice(1).split("/"),view=Object.hasOwn(pages,selected)?selected:"overview";
+    const [selected,detail=""]=location.hash.slice(1).split("/");
+    let view=Object.hasOwn(pages,selected)?selected:"overview";
+    if (started && C.canPage && !C.canPage(view)) view=Object.keys(pages).find(C.canPage)||"accounts";
     let agentID="";if(view==="agents"&&detail){try{agentID=decodeURIComponent(detail);}catch(_){agentID="";}}
     C.view=view;const [title,eyebrow,description]=pages[view];
     C.text("pageTitle",title);C.text("pageEyebrow",eyebrow);C.text("pageDescription",description);document.title=`${agentID?`${agentID} · `:""}${title} · Xe-AntiShell Central`;
@@ -64,6 +68,8 @@
     for(const link of C.id("navigation").querySelectorAll("[data-view]")){if(link.dataset.view===view)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");}
     C.openAgentRoute?.(agentID);
     if(started&&view==="history")C.loadHistory(true);if(started&&view==="audit")C.loadAudit(true);if(started&&view==="accounts")C.loadAccounts();if(started&&view==="updates")C.loadUpdates?.();
+    if(started&&view==="access-management")C.loadAccessManagement?.().catch(C.error);
+    if(started&&view==="decommission")C.loadRemovalBatches?.()?.catch(C.error);
   };
   C.navigate=navigate;
   const recent = async () => {
@@ -72,13 +78,19 @@
     catch(error){if(generation===recentGeneration)C.id("recentFindings").replaceChildren(C.empty("최근 탐지를 불러오지 못했습니다. 탐지·실행 이력에서 다시 조회하세요."));}
   };
   C.refresh = () => {
+    const statePermissions = ["agents.read","groups.read","groups.manage","policies.read","policies.manage",
+      "policies.deploy","updates.deploy","agents.remove"];
+    if (C.session?.permissions && !statePermissions.some(permission => C.can?.(permission))) {
+      C.applyAccess();
+      return C.can?.("history.read") ? recent() : Promise.resolve();
+    }
     if(refreshing)return refreshing;
     refreshing=(async()=>{
       try{
         const state=await C.request("/api/state");C.updateState(state);C.applyAccess();
         C.text("lastUpdated",`${C.time(state.server_time||new Date().toISOString())} 갱신`);C.text("connectionState","중앙 연결됨");C.id("connectionState").className="connection connected";
         if(state.agents_truncated)C.error(`등록된 ${C.number(state.total_agents)}대 중 최대 1,000대만 표시합니다. 검색·집계·선택은 표시된 서버를 기준으로 합니다.`);
-        await recent();
+        if (!C.session?.permissions || C.can?.("history.read")) await recent();
       }catch(error){C.text("connectionState","갱신 실패");C.id("connectionState").className="connection failed";C.error(error);}
       finally{refreshing=null;}
     })();return refreshing;
@@ -90,10 +102,10 @@
   }));
   globalThis.addEventListener("pagehide",clearSecret);
   globalThis.addEventListener("hashchange",navigate);
-  globalThis.addEventListener("beforeunload",event=>{if(C.hasUnsavedPolicy()||C.hasUnsavedGroup()){event.preventDefault();event.returnValue="";}});
-  C.initFleet();C.initOperations();C.initHistory();C.initPolicy();C.initAccounts();C.initUpdates?.();C.initCentralUpdate?.();navigate();
+  globalThis.addEventListener("beforeunload",event=>{if(!C.changingSite&&(C.hasUnsavedPolicy()||C.hasUnsavedGroup())){event.preventDefault();event.returnValue="";}});
+  C.initFleet();C.initOperations();C.initHistory();C.initPolicy();C.initAccounts();C.initUpdates?.();C.initCentralUpdate?.();C.initAccessManagement?.();C.initRemovalBatches?.();navigate();
   (async()=>{
-    try{C.session=await C.request("/api/session");C.text("sessionUser",C.session.username);C.applyAccess();started=true;await C.refresh();navigate();}
+    try{C.session=await C.request("/api/session");C.text("sessionUser",C.session.username);await C.loadSites?.();C.applyAccess();started=true;await C.refresh();navigate();}
     catch(error){C.error(error);}
     setInterval(()=>{if(started&&!document.hidden)C.refresh();},15000);
     document.addEventListener("visibilitychange",()=>{if(started&&!document.hidden)C.refresh();});

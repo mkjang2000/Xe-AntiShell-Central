@@ -19,6 +19,7 @@
   <script src="/assets/file-integrity.js" defer></script>
   <script src="/assets/service-inventory.js" defer></script>
   <script src="/assets/fleet.js" defer></script>
+  <script src="/assets/remote-removal.js" defer></script>
   <script src="/assets/policy-trials.js" defer></script>
   <script src="/assets/policy-services.js" defer></script>
   <script src="/assets/policy-diff.js" defer></script>
@@ -34,13 +35,15 @@
   <script src="/assets/updates-source.js" defer></script>
   <script src="/assets/updates.js" defer></script>
   <script src="/assets/central-update.js" defer></script>
+  <script src="/assets/access-management.js" defer></script>
+  <script src="/assets/removal-batches.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </head>
 <body data-page="console">
   <a href="#mainContent" class="skip-link">본문으로 바로가기</a>
   <header class="topbar">
     <a class="brand" href="#overview"><span class="brand-mark" aria-hidden="true">XE</span><span><strong>Xe-AntiShell <em>CENTRAL</em></strong><small>통합 보안 운영 콘솔</small></span></a>
-    <div class="top-actions"><span id="connectionState" class="connection">연결 확인 중</span><span id="sessionUser" class="user-name"></span><button class="quiet theme-toggle" data-theme-toggle type="button" aria-pressed="true">라이트 모드</button><button id="refreshButton" class="quiet" type="button">새로고침</button><button id="logoutButton" class="quiet" type="button">로그아웃</button></div>
+    <div class="top-actions"><label id="consoleSiteField" class="top-site" hidden>사이트 <select id="consoleSiteSelect"></select></label><span id="connectionState" class="connection">연결 확인 중</span><span id="sessionUser" class="user-name"></span><button class="quiet theme-toggle" data-theme-toggle type="button" aria-pressed="true">라이트 모드</button><button id="refreshButton" class="quiet" type="button">새로고침</button><button id="logoutButton" class="quiet" type="button">로그아웃</button></div>
   </header>
   <div class="workspace">
     <aside class="sidebar" aria-label="중앙 관리 메뉴">
@@ -53,6 +56,8 @@
         <div class="side-label">OPERATIONS</div>
         <a href="#history" data-view="history"><span aria-hidden="true">⌕</span>탐지·실행 이력</a>
         <a href="#approvals" data-view="approvals"><span aria-hidden="true">⊕</span>등록·제거 승인</a>
+        <a href="#decommission" data-view="decommission" hidden><span aria-hidden="true">−</span>일괄 제거</a>
+        <a href="#access-management" data-view="access-management" hidden><span aria-hidden="true">◇</span>사이트·권한</a>
         <a href="#updates" data-view="updates"><span aria-hidden="true">↑</span>업데이트</a>
         <a href="#audit" data-view="audit"><span aria-hidden="true">≡</span>감사 기록</a>
         <a href="#accounts" data-view="accounts"><span aria-hidden="true">♙</span><span id="accountsNavLabel">계정 관리</span></a>
@@ -90,6 +95,70 @@
           <nav id="agentDetailTabs" class="agent-tabs" aria-label="에이전트 상세 구역"></nav>
           <div id="agentDetailBody"></div>
         </section>
+      </section>
+
+      <section id="view-decommission" class="view" aria-label="에이전트 일괄 제거" hidden>
+        <section class="panel">
+          <div class="panel-head"><h2>제거 대상 선택</h2></div>
+          <form id="batchRemovalPreviewForm">
+            <div class="form-grid">
+              <label class="field">대상 범위<select id="batchRemovalTargetType"><option value="agents">에이전트 선택</option><option value="group">그룹</option><option value="site">사이트 전체</option></select></label>
+              <label id="batchRemovalFilterField" class="field">에이전트 검색<input id="batchRemovalFilter" type="search" maxlength="128"></label>
+              <select id="batchRemovalTargetID" aria-label="제거할 그룹 또는 사이트" hidden></select>
+            </div>
+            <div id="batchRemovalAgentList" class="selection-box" aria-label="제거할 에이전트"></div>
+            <div class="form-actions"><span id="batchRemovalSelected" class="muted"></span><button id="batchRemovalPreview" type="submit">미리보기</button></div>
+          </form>
+          <div id="batchRemovalPreviewResult" class="table-scroll" aria-live="polite"></div>
+          <button id="batchRemovalConfirm" type="button" class="danger" disabled>제거 요청 확인…</button>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>배치 결과</h2></div>
+          <form id="batchRemovalLookupForm" class="form-actions"><label class="field">배치 ID<input id="batchRemovalLookup" maxlength="160" required></label><button id="batchRemovalLookupButton" type="submit">조회</button></form>
+          <p id="batchRemovalStatus" class="muted" role="status"></p>
+          <div id="batchRemovalResult" class="table-scroll"></div>
+        </section>
+      </section>
+      <section id="view-access-management" class="view" aria-label="사이트와 권한 관리" hidden>
+        <div class="two-column">
+          <section id="rbacRolePanel" class="panel" hidden>
+            <div class="panel-head"><h2>역할별 권한</h2></div>
+            <label class="field">편집할 역할<select id="rbacRoleSelect"></select></label>
+            <form id="rbacRoleForm">
+              <div class="form-grid">
+                <label class="field">역할 ID<input id="rbacRoleID" required maxlength="64" spellcheck="false"></label>
+                <label class="field">역할 이름<input id="rbacRoleName" required maxlength="80"></label>
+              </div>
+              <fieldset><legend>부여할 권한</legend><div id="rbacPermissions" class="selection-box"></div></fieldset>
+              <div class="form-actions"><button id="rbacRoleSave" type="submit" class="primary">역할 저장</button><button id="rbacRoleDelete" type="button" class="danger quiet">역할 삭제</button></div>
+            </form>
+          </section>
+          <section id="rbacGrantPanel" class="panel" hidden>
+            <div class="panel-head"><h2>계정의 사이트 역할</h2></div>
+            <label class="field">계정<select id="rbacGrantAccount"></select></label>
+            <div id="rbacGrantRows"></div>
+            <div class="form-actions"><button id="rbacGrantAdd" type="button">역할 추가</button><button id="rbacGrantSave" type="button" class="primary">역할 부여 저장…</button></div>
+          </section>
+          <section id="rbacSitePanel" class="panel" hidden>
+            <div class="panel-head"><h2>사이트 관리</h2></div>
+            <label class="field">편집할 사이트<select id="rbacSiteSelect"></select></label>
+            <form id="rbacSiteForm">
+              <div class="form-grid">
+                <label class="field">사이트 ID<input id="rbacSiteID" required maxlength="64" spellcheck="false"></label>
+                <label class="field">사이트 이름<input id="rbacSiteName" required maxlength="80"></label>
+              </div>
+              <button id="rbacSiteSave" type="submit" class="primary">사이트 저장</button>
+            </form>
+          </section>
+          <section id="rbacMovePanel" class="panel" hidden>
+            <div class="panel-head"><h2>에이전트의 사이트 이동</h2></div>
+            <form id="rbacMoveForm">
+              <label class="field">대상 에이전트<select id="rbacMoveAgent" required></select></label>
+              <label class="field">이동할 사이트<select id="rbacMoveSite" required></select></label>
+              <button id="rbacMoveSave" type="submit">사이트 이동…</button>
+            </form>
+          </section>
+        </div>
       </section>
 
       <section id="view-groups" class="view" aria-label="서버 그룹 관리" hidden>

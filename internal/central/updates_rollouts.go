@@ -12,6 +12,14 @@ func (s *Server) confirmUpdate(ctx context.Context, actor, clientID, token strin
 		return "", ErrInvalid
 	}
 	requestKey := actor + ":" + clientID
+	siteID := selectedSite(ctx)
+	if siteID != "" {
+		scopeHash, err := consoleHash([]string{actor, siteID, clientID})
+		if err != nil {
+			return "", err
+		}
+		requestKey = "*:" + scopeHash
+	}
 	tokenHash, _ := consoleHash(token)
 	s.updateBlobs.mu.Lock()
 	defer s.updateBlobs.mu.Unlock()
@@ -21,7 +29,7 @@ func (s *Server) confirmUpdate(ctx context.Context, actor, clientID, token strin
 	}
 	defer tx.Rollback()
 	var oldID, oldHash string
-	err = tx.QueryRowContext(ctx, "SELECT id,snapshot_hash FROM update_rollouts WHERE request_key=?", requestKey).Scan(&oldID, &oldHash)
+	err = tx.QueryRowContext(ctx, "SELECT id,snapshot_hash FROM update_rollouts WHERE request_key=? AND site_id=?", requestKey, siteID).Scan(&oldID, &oldHash)
 	if err == nil {
 		if oldHash != tokenHash {
 			return "", ErrConflict
@@ -35,6 +43,9 @@ func (s *Server) confirmUpdate(ctx context.Context, actor, clientID, token strin
 	before, err := s.decodeUpdatePreview(token, now)
 	if err != nil {
 		return "", err
+	}
+	if before.SiteID != siteID || before.Actor != "" && before.Actor != actor {
+		return "", ErrConflict
 	}
 	if err = expireUpdateJobs(ctx, tx, now); err != nil {
 		return "", err
@@ -60,7 +71,7 @@ func (s *Server) confirmUpdate(ctx context.Context, actor, clientID, token strin
 		return "", err
 	}
 	id = "rollout-" + id
-	_, err = tx.ExecContext(ctx, "INSERT INTO update_rollouts(id,release_id,created_by,created_at_ns,expires_at_ns,concurrency,request_key,snapshot_hash) VALUES(?,?,?,?,?,?,?,?)", id, release.ID, actor, now.UnixNano(), now.Add(updateQueueTTL).UnixNano(), after.Request.Concurrency, requestKey, tokenHash)
+	_, err = tx.ExecContext(ctx, "INSERT INTO update_rollouts(id,release_id,created_by,created_at_ns,expires_at_ns,concurrency,request_key,snapshot_hash,site_id) VALUES(?,?,?,?,?,?,?,?,?)", id, release.ID, actor, now.UnixNano(), now.Add(updateQueueTTL).UnixNano(), after.Request.Concurrency, requestKey, tokenHash, siteID)
 	if err != nil {
 		return "", err
 	}
@@ -108,6 +119,14 @@ func (s *Server) cancelUpdate(ctx context.Context, id, actor string) (int, int, 
 	if err = expireUpdateJobs(ctx, tx, s.now().UTC()); err != nil {
 		return 0, 0, err
 	}
+	var siteID string
+	err = tx.QueryRowContext(ctx, "SELECT site_id FROM update_rollouts WHERE id=? AND (?='' OR site_id=?)", id, selectedSite(ctx), selectedSite(ctx)).Scan(&siteID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, 0, err
+	}
 	result, err := tx.ExecContext(ctx, "UPDATE update_rollouts SET cancelled=1 WHERE id=?", id)
 	if err != nil {
 		return 0, 0, err
@@ -128,7 +147,7 @@ func (s *Server) cancelUpdate(ctx context.Context, id, actor string) (int, int, 
 	if err = expireUpdateJobs(ctx, tx, s.now().UTC()); err != nil {
 		return 0, 0, err
 	}
-	if err = appendAudit(ctx, tx, "", "update.rollout.cancelled", map[string]any{"rollout_id": id, "actor": actor, "cancelled": cancelled, "installing": installing}, s.now().UTC()); err != nil {
+	if err = appendSiteAudit(ctx, tx, siteID, "", "update.rollout.cancelled", map[string]any{"rollout_id": id, "actor": actor, "cancelled": cancelled, "installing": installing}, s.now().UTC()); err != nil {
 		return 0, 0, err
 	}
 	return int(cancelled), installing, tx.Commit()

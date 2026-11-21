@@ -9,7 +9,11 @@ import (
 
 func (s *Server) consoleFindingReviews(w http.ResponseWriter, r *http.Request) {
 	account, ok := console.AuthenticatedAccount(r.Context())
-	if !ok || (account.Role != console.RoleAdmin && account.Role != console.RoleOperator && !(r.Method == http.MethodGet && account.Role == console.RoleViewer)) {
+	permission := console.PermissionFindingsReview
+	if r.Method == http.MethodGet {
+		permission = console.PermissionHistoryRead
+	}
+	if !ok || !account.Can(permission, selectedSite(r.Context())) {
 		s.consoleError(w, "finding review authorization", ErrUnauthorized)
 		return
 	}

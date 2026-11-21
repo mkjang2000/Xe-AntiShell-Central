@@ -27,3 +27,16 @@ func TestServiceInventoryReadRole(t *testing.T) {
 		t.Fatal("service inventory read bypassed account or route limits")
 	}
 }
+
+func TestAgentConfigurationReadAndWriteRoles(t *testing.T) {
+	const preview = "/api/agent-configuration/preview"
+	const apply = "/api/agent-configuration/apply"
+	for _, role := range []Role{RoleOperator, RoleViewer} {
+		if !allowsAPI(role, http.MethodGet, "/api/agent-configuration/host") ||
+			allowsAPI(role, http.MethodPost, preview) != (role == RoleOperator) ||
+			allowsAPI(role, http.MethodPost, apply) != (role == RoleOperator) ||
+			allowsAPI(role, http.MethodPost, "/api/agent-configuration/host") {
+			t.Fatalf("invalid agent configuration access for %s", role)
+		}
+	}
+}

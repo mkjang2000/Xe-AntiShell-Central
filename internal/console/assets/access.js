@@ -1,12 +1,34 @@
 "use strict";
 (function (C) {
   const roleNames = {admin:"관리자",operator:"운영자",viewer:"조회자"};
+  const pagePermissions = {
+    overview: ["agents.read", "history.read"], agents: ["agents.read"], groups: ["groups.read", "groups.manage"],
+    policies: ["policies.read", "policies.manage", "policies.deploy", "policies.trial"],
+    history: ["history.read"], audit: ["audit.read"], approvals: ["agents.enroll", "agents.removal_grant", "agents.revoke"],
+    updates: ["updates.read", "updates.deploy", "updates.releases", "central.update"], decommission: ["agents.remove"],
+    "access-management": ["accounts.manage", "roles.manage", "sites.manage", "sites.assign_agents"]
+  };
+  C.canPage = view => !C.session?.permissions || !pagePermissions[view] || pagePermissions[view].some(permission => C.can(permission));
+  const updatePermissionControls = () => {
+    for (const link of C.id("navigation").querySelectorAll("[data-view]")) link.hidden = !C.canPage(link.dataset.view);
+    const controls = {
+      groupForm: "groups.manage", newGroup: "groups.manage", templateForm: "policies.manage", newTemplate: "policies.manage",
+      previewForm: "policies.deploy", enrollmentForm: "agents.enroll", removalForm: "agents.removal_grant", revokeForm: "agents.revoke"
+    };
+    for (const [id, permission] of Object.entries(controls)) {
+      const node = C.id(id);
+      if (!node) continue;
+      node.inert = !C.can(permission);
+    }
+    C.text("accountsNavLabel", C.can("accounts.manage") ? "계정 관리" : "내 계정");
+  };
   C.applyAccess = () => {
     const role = C.session?.role || "viewer";
     C.text("sessionUser", `${C.session?.username || ""} · ${roleNames[role] || "조회자"}`);
     C.text("accountsNavLabel", role === "admin" ? "계정 관리" : "내 계정");
     C.applyUpdateAccess?.();
     C.applyCentralUpdateAccess?.();
+    if (C.session?.permissions) { updatePermissionControls(); return; }
     if (role === "admin" || role === "operator") return;
     for (const id of ["groupForm","templateForm","previewForm","enrollmentForm","removalForm","revokeForm"]) {
       const form = C.id(id);

@@ -172,6 +172,9 @@ func (s *Store) Heartbeat(ctx context.Context, agentID string, heartbeat managed
 	if err = recordHeartbeatErrors(ctx, tx, agentID, heartbeat, now, false); err != nil {
 		return err
 	}
+	if err = recordAgentConfigurationRejection(ctx, tx, agentID, heartbeat, now); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

@@ -10,7 +10,7 @@
   let panel, root;
   const el=(tag,name="",text)=>C.el(tag,name,text);
   const button=(text,id,action,tone="")=>{const node=C.button(text,action,tone);if(id)node.id=id;return node;};
-  const admin=()=>C.session?.role==="admin",operator=()=>["admin","operator"].includes(C.session?.role);
+  const admin=()=>C.session?.permissions?C.can("updates.releases"):C.session?.role==="admin",operator=()=>C.session?.permissions?C.can("updates.deploy"):["admin","operator"].includes(C.session?.role);
   const requireRole=(administration=false)=>{if(!(administration?admin():operator()))throw new Error(administration?"릴리즈 등록·삭제는 관리자만 할 수 있습니다.":"업데이트 배포·취소는 운영자 또는 관리자만 할 수 있습니다.");};
   const phase=value=>Object.hasOwn(phases,value)?C.tag(...phases[value]):C.tag("상태 미확인","warning");
   const reason=value=>Object.hasOwn(reasons,value)?reasons[value]:"서버가 배포 대상에서 제외했습니다. 최신 상태를 확인하세요.";

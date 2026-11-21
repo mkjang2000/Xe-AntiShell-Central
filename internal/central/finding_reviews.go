@@ -70,8 +70,8 @@ func readFinding(ctx context.Context, tx *sql.Tx, t reviewTarget) (json.RawMessa
 		expr = "json_extract(payload,'$.findings['||?||']')"
 		args = append(args, t.Item-1)
 	}
-	args = append(args, t.Agent, t.Source, t.Record)
-	if err := tx.QueryRowContext(ctx, "SELECT "+expr+" FROM records WHERE agent_id=? AND kind=? AND record_id=?", args...).Scan(&body); err != nil {
+	args = append(args, t.Agent, t.Source, t.Record, selectedSite(ctx), selectedSite(ctx))
+	if err := tx.QueryRowContext(ctx, "SELECT "+expr+" FROM records WHERE agent_id=? AND kind=? AND record_id=? AND (?='' OR site_id=?)", args...).Scan(&body); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -150,6 +150,9 @@ func (s *Store) appendReview(ctx context.Context, input reviewInput, actor strin
 		return r, false, err
 	}
 	defer tx.Rollback()
+	if _, err = readFinding(ctx, tx, t); err != nil {
+		return r, false, err
+	}
 	var previous reviewTarget
 	var ns int64
 	err = tx.QueryRowContext(ctx, "SELECT agent_id,source,record_id,item,version,verdict,reason,actor,created_at_ns FROM finding_reviews WHERE actor=? AND request_id=?", actor, input.Request).Scan(&previous.Agent, &previous.Source, &previous.Record, &previous.Item, &r.Version, &r.Verdict, &r.Reason, &r.Actor, &ns)
@@ -161,9 +164,6 @@ func (s *Store) appendReview(ctx context.Context, input reviewInput, actor strin
 		return r, false, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return r, false, err
-	}
-	if _, err = readFinding(ctx, tx, t); err != nil {
 		return r, false, err
 	}
 	latest, err := latestReview(ctx, tx, t)
@@ -178,7 +178,11 @@ func (s *Store) appendReview(ctx context.Context, input reviewInput, actor strin
 	if err != nil {
 		return r, false, err
 	}
-	if err = appendAudit(ctx, tx, t.Agent, "finding.reviewed", map[string]any{"actor": actor, "source": t.Source, "record_id": t.Record, "item": t.Item, "version": r.Version, "verdict": r.Verdict}, now); err != nil {
+	var siteID string
+	if err = tx.QueryRowContext(ctx, "SELECT site_id FROM records WHERE agent_id=? AND kind=? AND record_id=?", t.Agent, t.Source, t.Record).Scan(&siteID); err != nil {
+		return r, false, err
+	}
+	if err = appendSiteAudit(ctx, tx, siteID, t.Agent, "finding.reviewed", map[string]any{"actor": actor, "source": t.Source, "record_id": t.Record, "item": t.Item, "version": r.Version, "verdict": r.Verdict}, now); err != nil {
 		return r, false, err
 	}
 	return r, true, tx.Commit()
@@ -210,7 +214,7 @@ func (s *Store) reviewEvidence(ctx context.Context, t reviewTarget, id string) (
 			if t.Source == "event_bundle" {
 				preferred = "event_bundle"
 			}
-			err = tx.QueryRowContext(ctx, `SELECT CASE kind WHEN 'event' THEN payload ELSE json_extract(payload,'$.event') END FROM records WHERE agent_id=? AND record_id=? AND kind IN ('event','event_bundle') ORDER BY (kind=?) DESC LIMIT 1`, t.Agent, id, preferred).Scan(&evidence)
+			err = tx.QueryRowContext(ctx, `SELECT CASE kind WHEN 'event' THEN payload ELSE json_extract(payload,'$.event') END FROM records WHERE agent_id=? AND record_id=? AND kind IN ('event','event_bundle') AND (?='' OR site_id=?) ORDER BY (kind=?) DESC LIMIT 1`, t.Agent, id, selectedSite(ctx), selectedSite(ctx), preferred).Scan(&evidence)
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, ErrNotFound
 			}

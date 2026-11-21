@@ -10,7 +10,7 @@
     failed:"실패", interrupted:"중단됨 · 복구 상태 확인 필요"
   };
   const available = new Set(["idle","succeeded","failed","interrupted"]);
-  const admin = () => C.session?.role === "admin";
+  const admin = () => C.session?.permissions ? C.can("central.update") : C.session?.role === "admin";
   const compareVersions = (target, current) => {
     for (let i = 1; i <= 4; i++) {
       const order = Number(target[i]) - Number(current[i]);

@@ -82,6 +82,15 @@ func TestConsoleRolesEnforceEveryBusinessAPI(t *testing.T) {
 				t.Fatalf("restricted read %s: %d", endpoint, w.Code)
 			}
 		}
+		for _, route := range []struct{ method, endpoint string }{
+			{"GET", "/api/agents/example/remote-removal"},
+			{"POST", "/api/agents/example/remote-removal"},
+			{"POST", "/api/agents/example/remote-removal/cancel"},
+		} {
+			if w := accountRequest(t, s, cookie, route.method, route.endpoint, map[string]string{}, true); w.Code != 403 {
+				t.Fatalf("restricted remote removal route %s: %d", route.endpoint, w.Code)
+			}
+		}
 		if w := accountRequest(t, s, cookie, "POST", "/api/accounts", map[string]string{"username": "intruder", "password": "account-password-fixture1!", "role": "admin"}, true); w.Code != 403 {
 			t.Fatalf("account escalation: %d", w.Code)
 		}
@@ -103,6 +112,8 @@ func TestAccountMutationsRequireCSRFAndProtectLastAdmin(t *testing.T) {
 		method, endpoint string
 		body             any
 	}{
+		{"POST", "/api/agents/example/remote-removal", map[string]string{"enrollment_id": "example-enrollment", "confirmation": "example"}},
+		{"POST", "/api/agents/example/remote-removal/cancel", map[string]string{"enrollment_id": "example-enrollment", "order_id": "removal-example"}},
 		{"POST", "/api/accounts", map[string]string{"username": "created", "password": "account-password-fixture1!", "role": "viewer"}},
 		{"POST", "/api/accounts/admin", map[string]any{"role": "viewer", "version": 1}},
 		{"DELETE", "/api/accounts/admin?version=1", nil},

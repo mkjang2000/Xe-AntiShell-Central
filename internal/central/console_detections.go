@@ -3,6 +3,7 @@ package central
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -32,11 +33,23 @@ type consoleDetectionWindowInfo struct {
 func consoleRecentDetections(ctx context.Context, tx *sql.Tx, since time.Time, limit int) (map[string]consoleDetection, consoleDetectionWindowInfo, error) {
 	info := consoleDetectionWindowInfo{Since: since}
 	from := since.UnixNano()
-	rows, err := tx.QueryContext(ctx, `SELECT agent_id,count(*),max(received_at_ns) FROM (
-SELECT agent_id,received_at_ns FROM records INDEXED BY records_history_detection_bundle_idx WHERE kind='event_bundle' AND json_array_length(payload,'$.findings')>0 AND received_at_ns>=?
+	siteID := selectedSite(ctx)
+	query := `SELECT agent_id,count(*),max(received_at_ns) FROM (
+SELECT agent_id,received_at_ns FROM records INDEXED BY records_history_detection_bundle_idx WHERE kind='event_bundle' AND json_array_length(payload,'$.findings')>0 AND received_at_ns>=?{{site}}
 UNION ALL
-SELECT agent_id,received_at_ns FROM records INDEXED BY records_history_kind_idx WHERE kind='finding' AND received_at_ns>=?
-LIMIT ?) GROUP BY agent_id`, from, from, limit+1)
+SELECT agent_id,received_at_ns FROM records INDEXED BY records_history_kind_idx WHERE kind='finding' AND received_at_ns>=?{{site}}
+LIMIT ?) GROUP BY agent_id`
+	var args []any
+	if siteID != "" {
+		query = strings.ReplaceAll(query, "{{site}}", " AND site_id=?")
+		query = strings.Replace(query, "records_history_detection_bundle_idx", "records_site_detection_bundle_idx", 1)
+		query = strings.Replace(query, "records_history_kind_idx", "records_site_detection_finding_idx", 1)
+		args = []any{from, siteID, from, siteID, limit + 1}
+	} else {
+		query = strings.ReplaceAll(query, "{{site}}", "")
+		args = []any{from, from, limit + 1}
+	}
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, info, err
 	}

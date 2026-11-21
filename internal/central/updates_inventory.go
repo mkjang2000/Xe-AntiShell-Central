@@ -78,11 +78,12 @@ func (s *Server) listUpdateAgents(ctx context.Context, after, search string, lim
 		return nil, "", 0, err
 	}
 	pattern := "%" + strings.ToLower(search) + "%"
+	siteID := selectedSite(ctx)
 	var total int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM agents WHERE revoked=0 AND (lower(agent_id) LIKE ? OR lower(hostname) LIKE ?)", pattern, pattern).Scan(&total); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM agents WHERE revoked=0 AND (lower(agent_id) LIKE ? OR lower(hostname) LIKE ?) AND (?='' OR site_id=?)", pattern, pattern, siteID, siteID).Scan(&total); err != nil {
 		return nil, "", 0, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.agent_id,a.enrollment_id,a.hostname,i.inventory_json,coalesce(i.received_at_ns,0),coalesce(h.active_job_id,'') FROM agents a LEFT JOIN update_inventory i ON i.agent_id=a.agent_id AND i.enrollment_id=a.enrollment_id LEFT JOIN update_heads h ON h.agent_id=a.agent_id AND h.enrollment_id=a.enrollment_id WHERE a.revoked=0 AND a.agent_id>? AND (lower(a.agent_id) LIKE ? OR lower(a.hostname) LIKE ?) ORDER BY a.agent_id LIMIT ?`, after, pattern, pattern, limit+1)
+	rows, err := tx.QueryContext(ctx, `SELECT a.agent_id,a.enrollment_id,a.site_id,a.hostname,i.inventory_json,coalesce(i.received_at_ns,0),coalesce(h.active_job_id,'') FROM agents a LEFT JOIN update_inventory i ON i.agent_id=a.agent_id AND i.enrollment_id=a.enrollment_id LEFT JOIN update_heads h ON h.agent_id=a.agent_id AND h.enrollment_id=a.enrollment_id WHERE a.revoked=0 AND a.agent_id>? AND (lower(a.agent_id) LIKE ? OR lower(a.hostname) LIKE ?) AND (?='' OR a.site_id=?) ORDER BY a.agent_id LIMIT ?`, after, pattern, pattern, siteID, siteID, limit+1)
 	if err != nil {
 		return nil, "", 0, err
 	}
@@ -91,7 +92,7 @@ func (s *Server) listUpdateAgents(ctx context.Context, after, search string, lim
 		var item ConsoleUpdateAgent
 		var body []byte
 		var ns int64
-		if err = rows.Scan(&item.AgentID, &item.EnrollmentID, &item.Hostname, &body, &ns, &item.ActiveJobID); err != nil {
+		if err = rows.Scan(&item.AgentID, &item.EnrollmentID, &item.SiteID, &item.Hostname, &body, &ns, &item.ActiveJobID); err != nil {
 			break
 		}
 		if len(body) > 0 {

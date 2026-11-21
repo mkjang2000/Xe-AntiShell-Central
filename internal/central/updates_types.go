@@ -18,6 +18,7 @@ type ConsoleUpdateRelease struct {
 }
 
 type ConsoleUpdateAgent struct {
+	SiteID       string                   `json:"site_id"`
 	AgentID      string                   `json:"agent_id"`
 	EnrollmentID string                   `json:"enrollment_id"`
 	Hostname     string                   `json:"hostname"`
@@ -64,6 +65,7 @@ type ConsoleUpdateJob struct {
 }
 
 type ConsoleUpdateRollout struct {
+	SiteID      string         `json:"site_id,omitempty"`
 	ID          string         `json:"id"`
 	ReleaseID   string         `json:"release_id"`
 	CreatedBy   string         `json:"created_by"`

@@ -1,6 +1,7 @@
 package console
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/netip"
@@ -17,6 +18,11 @@ type Options struct {
 	AccountsPath   string
 	PublicOrigin   string
 	TrustedProxies []string
+	// SiteExists validates immutable site IDs when role grants are saved.
+	SiteExists func(context.Context, string) (bool, error)
+	// OnAuthorizationLoader connects Central workflows that must refresh
+	// current account permissions after the original browser request.
+	OnAuthorizationLoader func(func(context.Context, string) (Account, error))
 }
 
 // Validate checks proxy options without opening listeners or loading credentials.
