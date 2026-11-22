@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/assets/application-policies.css">
   <link rel="stylesheet" href="/assets/policy-editor.css">
   <link rel="stylesheet" href="/assets/fleet.css">
+  <link rel="stylesheet" href="/assets/access-management.css">
   <script src="/assets/model.js" defer></script>
   <script src="/assets/privilege.js" defer></script>
   <script src="/assets/access.js" defer></script>
@@ -57,7 +58,7 @@
         <a href="#history" data-view="history"><span aria-hidden="true">⌕</span>탐지·실행 이력</a>
         <a href="#approvals" data-view="approvals"><span aria-hidden="true">⊕</span>등록·제거 승인</a>
         <a href="#decommission" data-view="decommission" hidden><span aria-hidden="true">−</span>일괄 제거</a>
-        <a href="#access-management" data-view="access-management" hidden><span aria-hidden="true">◇</span>사이트·권한</a>
+        <a href="#access-management" data-view="access-management" hidden><span aria-hidden="true">⊞</span>사이트·권한</a>
         <a href="#updates" data-view="updates"><span aria-hidden="true">↑</span>업데이트</a>
         <a href="#audit" data-view="audit"><span aria-hidden="true">≡</span>감사 기록</a>
         <a href="#accounts" data-view="accounts"><span aria-hidden="true">♙</span><span id="accountsNavLabel">계정 관리</span></a>
@@ -120,43 +121,86 @@
         </section>
       </section>
       <section id="view-access-management" class="view" aria-label="사이트와 권한 관리" hidden>
-        <div class="two-column">
-          <section id="rbacRolePanel" class="panel" hidden>
-            <div class="panel-head"><h2>역할별 권한</h2></div>
-            <label class="field">편집할 역할<select id="rbacRoleSelect"></select></label>
-            <form id="rbacRoleForm">
-              <div class="form-grid">
-                <label class="field">역할 ID<input id="rbacRoleID" required maxlength="64" spellcheck="false"></label>
-                <label class="field">역할 이름<input id="rbacRoleName" required maxlength="80"></label>
+        <nav class="policy-workspace-nav access-tabs" aria-label="사이트·권한 작업">
+          <button type="button" id="accessTab-accounts" data-access-tab="accounts" aria-controls="accessPane-accounts" aria-pressed="false" hidden>계정별 권한</button>
+          <button type="button" id="accessTab-roles" data-access-tab="roles" aria-controls="accessPane-roles" aria-pressed="false" hidden>역할</button>
+          <button type="button" id="accessTab-sites" data-access-tab="sites" aria-controls="accessPane-sites" aria-pressed="false" hidden>사이트</button>
+        </nav>
+
+        <div id="accessPane-accounts" class="split-editor access-pane" hidden>
+          <section class="panel" aria-labelledby="grantListHeading">
+            <div class="panel-head"><h2 id="grantListHeading">계정 <span id="grantAccountCount" class="catalog-count"></span></h2></div>
+            <div class="field"><label for="grantAccountFilter">계정 검색</label><input id="grantAccountFilter" type="search" maxlength="64" placeholder="사용자 이름" autocomplete="off" spellcheck="false"></div>
+            <div id="grantAccountList" class="select-list"></div>
+          </section>
+          <section class="panel" aria-labelledby="grantTitle">
+            <div class="access-head"><div class="access-title"><p class="eyebrow" id="grantEyebrow">계정</p><h2 id="grantTitle" tabindex="-1">계정을 선택하세요</h2><div id="grantSummary" class="access-summary"></div></div></div>
+            <div id="grantNotes"></div>
+            <div id="grantEditor" hidden>
+              <div class="access-subhead"><h3>사이트별 역할</h3><span class="muted">칸을 선택하면 그 범위에서 역할의 권한을 받습니다.</span></div>
+              <div id="grantMatrix" class="table-scroll access-matrix-scroll" tabindex="0" role="region" aria-label="사이트별 역할 선택"></div>
+              <div id="grantWarnings"></div>
+              <div id="grantChanges" class="access-changes" hidden></div>
+              <div id="grantSavebar" class="access-savebar"><span id="grantDirty" class="muted"></span><button id="grantReset" type="button" class="quiet">되돌리기</button><button id="grantSave" type="button" class="primary">역할 부여 저장…</button></div>
+            </div>
+          </section>
+        </div>
+
+        <div id="accessPane-roles" class="split-editor access-pane" hidden>
+          <section class="panel" aria-labelledby="roleListHeading">
+            <div class="panel-head"><h2 id="roleListHeading">역할 <span id="roleCount" class="catalog-count"></span></h2><button id="roleNew" type="button" class="small">+ 새 역할</button></div>
+            <div id="roleList" class="select-list"></div>
+          </section>
+          <section class="panel" aria-labelledby="roleTitle">
+            <form id="roleForm" novalidate>
+              <div class="access-head">
+                <div class="access-title"><p class="eyebrow" id="roleEyebrow">역할</p><h2 id="roleTitle" tabindex="-1">역할</h2><div id="roleSummary" class="access-summary"></div></div>
+                <div class="access-head-actions"><button id="roleDuplicate" type="button" class="small">복제</button><button id="roleDelete" type="button" class="small danger quiet">삭제</button></div>
               </div>
-              <fieldset><legend>부여할 권한</legend><div id="rbacPermissions" class="selection-box"></div></fieldset>
-              <div class="form-actions"><button id="rbacRoleSave" type="submit" class="primary">역할 저장</button><button id="rbacRoleDelete" type="button" class="danger quiet">역할 삭제</button></div>
-            </form>
-          </section>
-          <section id="rbacGrantPanel" class="panel" hidden>
-            <div class="panel-head"><h2>계정의 사이트 역할</h2></div>
-            <label class="field">계정<select id="rbacGrantAccount"></select></label>
-            <div id="rbacGrantRows"></div>
-            <div class="form-actions"><button id="rbacGrantAdd" type="button">역할 추가</button><button id="rbacGrantSave" type="button" class="primary">역할 부여 저장…</button></div>
-          </section>
-          <section id="rbacSitePanel" class="panel" hidden>
-            <div class="panel-head"><h2>사이트 관리</h2></div>
-            <label class="field">편집할 사이트<select id="rbacSiteSelect"></select></label>
-            <form id="rbacSiteForm">
-              <div class="form-grid">
-                <label class="field">사이트 ID<input id="rbacSiteID" required maxlength="64" spellcheck="false"></label>
-                <label class="field">사이트 이름<input id="rbacSiteName" required maxlength="80"></label>
+              <p id="roleNote" class="inline-note" hidden></p>
+              <div id="roleFields" class="form-grid">
+                <div class="field" id="roleIDField"><label for="roleID">역할 ID</label><input id="roleID" maxlength="64" spellcheck="false" autocomplete="off" placeholder="예: incident-responder"><small>영문·숫자와 . _ : - · 만든 뒤 바꿀 수 없습니다</small></div>
+                <div class="field"><label for="roleName">역할 이름</label><input id="roleName" maxlength="80" autocomplete="off" placeholder="예: 침해 대응"></div>
               </div>
-              <button id="rbacSiteSave" type="submit" class="primary">사이트 저장</button>
+              <div class="access-subhead"><h3>권한</h3><span class="muted"><span class="tag blue">전역</span> 권한은 계정에 '모든 사이트'로 부여해야 적용됩니다.</span></div>
+              <div id="rolePermissions" class="permission-groups"></div>
+              <section id="roleUsageSection" class="access-section" aria-labelledby="roleUsageHeading"><h3 id="roleUsageHeading" class="access-subheading">이 역할을 받은 계정</h3><div id="roleUsage"></div></section>
+              <div id="roleSavebar" class="access-savebar"><span id="roleDirty" class="muted"></span><button id="roleReset" type="button" class="quiet">되돌리기</button><button id="roleSave" type="submit" class="primary">역할 저장</button></div>
             </form>
           </section>
-          <section id="rbacMovePanel" class="panel" hidden>
-            <div class="panel-head"><h2>에이전트의 사이트 이동</h2></div>
-            <form id="rbacMoveForm">
-              <label class="field">대상 에이전트<select id="rbacMoveAgent" required></select></label>
-              <label class="field">이동할 사이트<select id="rbacMoveSite" required></select></label>
-              <button id="rbacMoveSave" type="submit">사이트 이동…</button>
+        </div>
+
+        <div id="accessPane-sites" class="split-editor access-pane" hidden>
+          <section class="panel" aria-labelledby="siteListHeading">
+            <div class="panel-head"><h2 id="siteListHeading">사이트 <span id="siteCount" class="catalog-count"></span></h2><button id="siteNew" type="button" class="small">+ 새 사이트</button></div>
+            <div id="siteList" class="select-list"></div>
+          </section>
+          <section class="panel" aria-labelledby="siteTitle">
+            <div class="access-head">
+              <div class="access-title"><p class="eyebrow" id="siteEyebrow">사이트</p><h2 id="siteTitle" tabindex="-1">사이트</h2><div id="siteSummary" class="access-summary"></div></div>
+              <div class="access-head-actions"><button id="siteRename" type="button" class="small">이름 변경</button></div>
+            </div>
+            <form id="siteForm" class="access-form" novalidate hidden>
+              <div class="form-grid">
+                <div class="field" id="siteIDField"><label for="siteID">사이트 ID</label><input id="siteID" maxlength="128" spellcheck="false" autocomplete="off" placeholder="예: seoul-idc"><small>영문·숫자와 . _ - · 만든 뒤 바꿀 수 없습니다</small></div>
+                <div class="field"><label for="siteName">사이트 이름</label><input id="siteName" maxlength="80" autocomplete="off" placeholder="예: 서울 IDC"></div>
+              </div>
+              <div class="form-actions"><button id="siteSave" type="submit" class="primary">사이트 만들기</button><button id="siteCancel" type="button" class="quiet">취소</button></div>
             </form>
+            <section id="siteAgentsSection" class="access-section" aria-labelledby="siteAgentsHeading">
+              <div class="access-subhead"><h3 id="siteAgentsHeading">소속 에이전트 <span id="siteAgentCount" class="catalog-count"></span></h3><input id="siteAgentFilter" class="access-search" type="search" maxlength="128" placeholder="에이전트·호스트 검색" aria-label="소속 에이전트 검색" autocomplete="off" spellcheck="false"></div>
+              <div id="siteAgents" class="table-scroll access-table-scroll"></div>
+              <div id="siteMoveBar" class="access-actionbar">
+                <span id="siteMoveSelected" class="access-actionbar-count">선택한 에이전트 없음</span>
+                <div class="field"><label for="siteMoveTarget">옮길 사이트</label><select id="siteMoveTarget"></select></div>
+                <button id="siteMoveSave" type="button">선택한 에이전트 이동…</button>
+              </div>
+              <div id="siteMoveResult" aria-live="polite"></div>
+            </section>
+            <section id="siteAccessSection" class="access-section" aria-labelledby="siteAccessHeading">
+              <h3 id="siteAccessHeading" class="access-subheading">접근할 수 있는 계정</h3>
+              <div id="siteAccounts"></div>
+            </section>
           </section>
         </div>
       </section>

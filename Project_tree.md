@@ -68,7 +68,8 @@ Xe-AntiShell-Central/
 │       ├── fleet.test.mjs        # State precedence, list cells, detection links, sorting, routing and tabs
 │       ├── remote-removal.js     # Permission-gated RPM decommission in agent detail
 │       ├── removal-batches.js    # Agent, group and site removal previews and results
-│       ├── access-management.js  # Site selection, role catalog and per-account grants
+│       ├── access-management.js  # Site selection, account grant matrix, grouped role editor and site agent moves
+│       ├── access-management.css # Site access tabs, grant matrix, permission groups and site member table
 │       ├── host-boundary.js      # Agent-detail registration and host security capability evidence
 │       ├── file-integrity.js     # Operator file measurement details and comparison digests
 │       ├── privilege.js          # Root/credential findings and bounded before/after evidence presentation

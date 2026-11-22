@@ -17,7 +17,7 @@
     approvals:["등록·제거 승인","ENROLLMENT & APPROVALS","단일 서버 설치 토큰과 일회용 제거 승인을 발급합니다."],
     updates:["업데이트","UPDATES","센트럴과 에이전트의 설치 상태를 확인하고 업데이트를 진행합니다."],
     decommission:["에이전트 일괄 제거","REMOTE REMOVAL","대상과 제외 사유를 확인하고 일괄 제거 결과를 조회합니다."],
-    "access-management":["사이트·권한","SITE ACCESS","역할에 권한을 부여하고 계정별 사이트 적용 범위를 지정합니다."],
+    "access-management":["사이트·권한","SITE ACCESS","계정마다 사이트별 역할을 부여하고, 역할의 권한과 사이트 소속 에이전트를 관리합니다."],
     audit:["감사 기록","OPERATOR AUDIT","기간별 중앙 관리 작업과 에이전트 감사 기록을 확인합니다."],
     accounts:["계정 관리","ACCOUNT MANAGEMENT","콘솔 계정과 권한을 관리하고 본인 비밀번호를 변경합니다."]
   };
@@ -97,12 +97,12 @@
   };
   C.id("refreshButton").addEventListener("click",()=>C.run(C.id("refreshButton"),async()=>{await C.refresh();if(C.view==="history")await C.loadHistory(true);if(C.view==="audit")await C.loadAudit(true);if(C.view==="accounts")await C.loadAccounts();if(C.view==="updates")await C.loadUpdates?.();}));
   C.id("logoutButton").addEventListener("click",()=>C.run(C.id("logoutButton"),async()=>{
-    if((C.hasUnsavedPolicy()||C.hasUnsavedGroup())&&!await C.confirm({title:"로그아웃 확인",description:"저장하지 않은 편집 내용이 있습니다. 로그아웃하면 편집 내용과 발급 결과가 사라집니다.",accept:"로그아웃"}))return;
+    if((C.hasUnsavedPolicy()||C.hasUnsavedGroup()||C.hasUnsavedAccess?.())&&!await C.confirm({title:"로그아웃 확인",description:"저장하지 않은 편집 내용이 있습니다. 로그아웃하면 편집 내용과 발급 결과가 사라집니다.",accept:"로그아웃"}))return;
     await C.request("/logout",{method:"POST"});clearSecret();location.assign("/login");
   }));
   globalThis.addEventListener("pagehide",clearSecret);
   globalThis.addEventListener("hashchange",navigate);
-  globalThis.addEventListener("beforeunload",event=>{if(!C.changingSite&&(C.hasUnsavedPolicy()||C.hasUnsavedGroup())){event.preventDefault();event.returnValue="";}});
+  globalThis.addEventListener("beforeunload",event=>{if(!C.changingSite&&(C.hasUnsavedPolicy()||C.hasUnsavedGroup()||C.hasUnsavedAccess?.())){event.preventDefault();event.returnValue="";}});
   C.initFleet();C.initOperations();C.initHistory();C.initPolicy();C.initAccounts();C.initUpdates?.();C.initCentralUpdate?.();C.initAccessManagement?.();C.initRemovalBatches?.();navigate();
   (async()=>{
     try{C.session=await C.request("/api/session");C.text("sessionUser",C.session.username);await C.loadSites?.();C.applyAccess();started=true;await C.refresh();navigate();}
